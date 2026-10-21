@@ -2,6 +2,7 @@
 __pycache__/
 *.pth
 *.onnx
+*.onnx.data
 data/*
 !data/samples/
 .pytest_cache/
