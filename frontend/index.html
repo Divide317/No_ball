@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CreaseGuard Pro™ | AI Cricket Officiating & No-Ball Telemetry SaaS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <!-- Ambient Background Glows -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <!-- Top Enterprise SaaS Header -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="2" width="32" height="32" rx="9" fill="url(#cgGrad)" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"/>
+            <circle cx="18" cy="18" r="9" stroke="#fff" stroke-width="2" stroke-dasharray="3 2"/>
+            <circle cx="18" cy="18" r="4" fill="#10B981"/>
+            <path d="M6 26H30" stroke="#F43F5E" stroke-width="2.2" stroke-linecap="round"/>
+            <defs>
+              <linearGradient id="cgGrad" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#0F172A"/>
+                <stop offset="1" stop-color="#1E293B"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title-row">
+            <span class="brand-name">CreaseGuard<span class="brand-accent">Pro</span></span>
+            <span class="saas-pill">ENTERPRISE B2B CLOUD v3.0</span>
+          </div>
+          <p class="brand-sub">Dual Residual SE-CNN Vision &amp; Automated ICC/MCC Law Officiating Engine</p>
+        </div>
+      </div>
+
+      <!-- Main Navigation Tabs -->
+      <nav class="nav-tabs" role="tablist">
+        <button class="nav-tab active" data-tab="studio" onclick="switchTab('studio')">
+          <span class="tab-dot live-dot"></span>
+          Live Umpire Studio
+        </button>
+        <button class="nav-tab" data-tab="analytics" onclick="switchTab('analytics')">
+          Match Telemetry Log
+          <span class="tab-counter" id="navHistoryCount">0</span>
+        </button>
+        <button class="nav-tab" data-tab="models" onclick="switchTab('models')">
+          AI Model Lab &amp; Datasets
+        </button>
+        <button class="nav-tab" data-tab="saas" onclick="switchTab('saas')">
+          SaaS API &amp; Plans
+        </button>
+      </nav>
+
+      <!-- System Telemetry Status -->
+      <div class="system-status">
+        <div class="status-badge" id="apiStatusBadge">
+          <span class="status-indicator online" id="apiStatusDot"></span>
+          <span id="apiStatusText">Connecting API...</span>
+        </div>
+        <a href="/docs" target="_blank" class="btn-ghost-sm" title="Open FastAPI Swagger Documentation">
+          Swagger API ↗
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <!-- ===================================================================== -->
+    <!-- TAB 1: LIVE THIRD-UMPIRE BROADCAST STUDIO                             -->
+    <!-- ===================================================================== -->
+    <section id="tab-studio" class="tab-section active">
+      <!-- Real Broadcast Presets Bar -->
+      <div class="presets-panel glass-card">
+        <div class="presets-header">
+          <div>
+            <span class="eyebrow">INSTANT BROADCAST REPLAY FEED</span>
+            <h3>Real Match &amp; Scenario Presets <span class="muted-hint">(1-Click Load &amp; Evaluate)</span></h3>
+          </div>
+          <div class="presets-actions">
+            <button class="btn-secondary-sm" onclick="advanceNextBall()">
+              + Advance Next Ball in Over
+            </button>
+          </div>
+        </div>
+        <div class="presets-grid" id="samplePresetsGrid">
+          <!-- Populated dynamically from /api/samples -->
+        </div>
+      </div>
+
+      <!-- Main Studio 12-Col Grid -->
+      <div class="studio-grid">
+        <!-- LEFT COLUMN: Dual Camera Feeds & AI Grad-CAM Telemetry -->
+        <div class="studio-col-cameras">
+          <div class="glass-card camera-suite-card">
+            <div class="card-header-row">
+              <div>
+                <span class="eyebrow">SYNCHRONIZED MULTI-ANGLE VISION</span>
+                <h2>Optical Broadcast Camera Feeds</h2>
+              </div>
+              <div class="telemetry-view-toggle">
+                <button class="toggle-btn active" id="btnViewRaw" onclick="setCameraViewMode('raw')">
+                  Raw Feed
+                </button>
+                <button class="toggle-btn" id="btnViewGradcam" onclick="setCameraViewMode('gradcam')">
+                  🔥 AI Grad-CAM HUD
+                </button>
+              </div>
+            </div>
+
+            <div class="dual-cameras-grid">
+              <!-- CAMERA 1: Popping Crease Side-On -->
+              <div class="camera-box" id="creaseDropZone">
+                <div class="camera-top-bar">
+                  <span class="cam-tag"><span class="rec-dot"></span> CAM 01 // POPPING CREASE</span>
+                  <span class="cam-law">MCC LAW 21.5</span>
+                </div>
+                <div class="camera-viewport" onclick="document.getElementById('footFileInput').click()">
+                  <img id="footPreviewImg" src="" alt="Crease Camera Feed" class="cam-img hidden" />
+                  <div id="footPlaceholder" class="cam-placeholder">
+                    <div class="upload-icon">📷</div>
+                    <p class="upload-title">Drop Crease Frame or Click to Upload</p>
+                    <p class="upload-sub">Side-on stump camera frame at front-foot landing</p>
+                  </div>
+                  <div class="cam-corner-tl"></div>
+                  <div class="cam-corner-tr"></div>
+                  <div class="cam-corner-bl"></div>
+                  <div class="cam-corner-br"></div>
+                </div>
+                <input type="file" id="footFileInput" accept="image/*" class="hidden" onchange="handleFileSelect(event, 'foot')" />
+
+                <div class="cam-telemetry-footer">
+                  <div class="prob-header">
+                    <span>AI Overstep Confidence</span>
+                    <span class="mono-val" id="overstepProbText">0.0%</span>
+                  </div>
+                  <div class="prob-bar-track">
+                    <div class="prob-bar-fill" id="overstepProbBar" style="width: 0%"></div>
+                  </div>
+                  <div class="cam-file-row">
+                    <span class="file-label" id="footFileName">No frame loaded</span>
+                    <button class="btn-link" onclick="document.getElementById('footFileInput').click()">Change Frame</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- CAMERA 2: Batter Waist Height Side-On -->
+              <div class="camera-box" id="waistDropZone">
+                <div class="camera-top-bar">
+                  <span class="cam-tag"><span class="rec-dot"></span> CAM 02 // BATTER WAIST PLANE</span>
+                  <span class="cam-law">MCC LAW 41.7</span>
+                </div>
+                <div class="camera-viewport" onclick="document.getElementById('waistFileInput').click()">
+                  <img id="waistPreviewImg" src="" alt="Waist Camera Feed" class="cam-img hidden" />
+                  <div id="waistPlaceholder" class="cam-placeholder">
+                    <div class="upload-icon">🎯</div>
+                    <p class="upload-title">Drop Waist Frame or Click to Upload</p>
+                    <p class="upload-sub">Side-on batter tracking frame for full-toss beamer check</p>
+                  </div>
+                  <div class="cam-corner-tl"></div>
+                  <div class="cam-corner-tr"></div>
+                  <div class="cam-corner-bl"></div>
+                  <div class="cam-corner-br"></div>
+                </div>
+                <input type="file" id="waistFileInput" accept="image/*" class="hidden" onchange="handleFileSelect(event, 'waist')" />
+
+                <div class="cam-telemetry-footer">
+                  <div class="prob-header">
+                    <span>AI Beamer (Full-Toss) Confidence</span>
+                    <span class="mono-val" id="beamerProbText">0.0%</span>
+                  </div>
+                  <div class="prob-bar-track">
+                    <div class="prob-bar-fill" id="beamerProbBar" style="width: 0%"></div>
+                  </div>
+                  <div class="cam-file-row">
+                    <span class="file-label" id="waistFileName">Optional camera feed</span>
+                    <button class="btn-link" onclick="clearWaistImage()">Clear</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- THIRD-UMPIRE BROADCAST DECISION VERDICT PANEL -->
+          <div class="glass-card verdict-card" id="verdictCard">
+            <div class="verdict-banner pending" id="verdictBanner">
+              <div class="verdict-left">
+                <span class="verdict-eyebrow" id="verdictEyebrow">THIRD-UMPIRE DECISION TELEMETRY</span>
+                <h1 class="verdict-title" id="verdictTitle">READY FOR DELIVERY</h1>
+                <p class="verdict-sub" id="verdictSub">Select a real broadcast preset above or upload a crease frame to run real-time adjudication.</p>
+              </div>
+              <div class="verdict-right">
+                <div class="free-hit-pill hidden" id="freeHitPill">⚡ FREE HIT NEXT BALL</div>
+                <div class="verdict-meta-grid">
+                  <div class="meta-box">
+                    <span class="meta-label">DELIVERY ID</span>
+                    <span class="meta-val mono-val" id="metaDeliveryId">—</span>
+                  </div>
+                  <div class="meta-box">
+                    <span class="meta-label">INFERENCE LATENCY</span>
+                    <span class="meta-val mono-val" id="metaLatency">— ms</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Reasons / Violations Alert Box -->
+            <div class="reasons-container hidden" id="reasonsContainer">
+              <h4>Flagged Infringements &amp; Umpire Triggers</h4>
+              <ul class="reasons-list" id="reasonsList"></ul>
+            </div>
+
+            <!-- 6-Point ICC/MCC Law Compliance Matrix -->
+            <div class="compliance-section">
+              <div class="compliance-header">
+                <span>AUTOMATED 6-POINT ICC / MCC LAW COMPLIANCE MATRIX</span>
+                <span class="phase-indicator" id="activePhaseBadge">T20 Powerplay (Overs 1–6)</span>
+              </div>
+              <div class="compliance-grid" id="complianceGrid">
+                <!-- Populated by JS -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Match Context & Interactive 2D Pitch Fielding Radar -->
+        <div class="studio-col-controls">
+          <div class="glass-card controls-card">
+            <div class="card-header-row">
+              <div>
+                <span class="eyebrow">DETERMINISTIC RULE ENGINE</span>
+                <h2>Match State &amp; Fielding Radar</h2>
+              </div>
+              <button class="btn-primary-run" id="btnEvaluateDelivery" onclick="runDeliveryEvaluation()">
+                <span>⚡ Adjudicate Delivery</span>
+              </button>
+            </div>
+
+            <!-- Format Pills -->
+            <div class="control-group">
+              <label class="control-label">Competition Format &amp; Playing Conditions</label>
+              <div class="format-selector" id="formatSelector">
+                <button type="button" class="fmt-btn active" data-fmt="T20" onclick="selectFormat('T20')">T20I</button>
+                <button type="button" class="fmt-btn" data-fmt="IPL" onclick="selectFormat('IPL')">IPL (2 Bouncers)</button>
+                <button type="button" class="fmt-btn" data-fmt="ODI" onclick="selectFormat('ODI')">ODI</button>
+                <button type="button" class="fmt-btn" data-fmt="Test" onclick="selectFormat('Test')">Test</button>
+                <button type="button" class="fmt-btn" data-fmt="100-ball" onclick="selectFormat('100-ball')">The Hundred</button>
+              </div>
+            </div>
+
+            <!-- Match Progress & Player Inputs -->
+            <div class="input-row-4">
+              <div class="input-field">
+                <label>Over (0-idx)</label>
+                <input type="number" id="inputOver" value="3" min="0" max="90" onchange="updateFieldingRadar()" />
+              </div>
+              <div class="input-field">
+                <label>Ball # Innings</label>
+                <input type="number" id="inputBallIndex" value="21" min="1" max="540" onchange="updateFieldingRadar()" />
+              </div>
+              <div class="input-field">
+                <label>Bowler</label>
+                <input type="text" id="inputBowler" value="J. Bumrah" />
+              </div>
+              <div class="input-field">
+                <label>Batter</label>
+                <input type="text" id="inputBatter" value="J. Buttler" />
+              </div>
+            </div>
+
+            <!-- Interactive 2D Cricket Pitch & Fielding Radar -->
+            <div class="radar-wrapper">
+              <div class="radar-top-row">
+                <span class="radar-title">LIVE 30-YARD CIRCLE &amp; LEG-SIDE TELEMETRY RADAR</span>
+                <span class="radar-status pass" id="radarRuleBadge">FIELDING LEGAL</span>
+              </div>
+              <div class="pitch-svg-container">
+                <svg id="fieldingRadarSvg" viewBox="0 0 320 320" xmlns="http://www.w3.org/2000/svg">
+                  <!-- Outfield Turf -->
+                  <circle cx="160" cy="160" r="150" fill="#0B2E23" stroke="#10B981" stroke-width="2" />
+                  <circle cx="160" cy="160" r="132" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="14" />
+                  <!-- Leg-Side (Right Half for RHB) Shading -->
+                  <path d="M160,10 A150,150 0 0,1 160,310 Z" fill="rgba(59,130,246,0.06)" id="legSideZonePath" />
+                  <!-- Behind Square Leg Zone (Top-Right Quadrant above popping crease y=126) -->
+                  <path d="M160,10 A150,150 0 0,1 304,126 L160,126 Z" fill="rgba(245,158,11,0.08)" id="behindSquareZonePath" />
+                  <!-- 30-Yard Powerplay Circle -->
+                  <circle cx="160" cy="160" r="82" fill="rgba(16,185,129,0.05)" stroke="#38BDF8" stroke-width="1.8" stroke-dasharray="5 4" id="thirtyYardCircle" />
+                  <!-- Popping Crease Horizontal Axis Line -->
+                  <line x1="160" y1="126" x2="306" y2="126" stroke="rgba(245,158,11,0.45)" stroke-width="1.2" stroke-dasharray="3 3" />
+                  <!-- Center Axis Line -->
+                  <line x1="160" y1="10" x2="160" y2="310" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+                  <!-- Cricket Pitch Strip -->
+                  <rect x="151" y="118" width="18" height="84" rx="2" fill="#C2A373" stroke="#E2C89D" stroke-width="1" />
+                  <line x1="149" y1="126" x2="171" y2="126" stroke="#FFFFFF" stroke-width="1.5" />
+                  <line x1="149" y1="194" x2="171" y2="194" stroke="#FFFFFF" stroke-width="1.5" />
+                  <!-- Labels -->
+                  <text x="58" y="46" fill="rgba(255,255,255,0.45)" font-size="9" font-family="JetBrains Mono">OFF SIDE</text>
+                  <text x="208" y="46" fill="rgba(255,255,255,0.55)" font-size="9" font-family="JetBrains Mono">LEG SIDE (MAX 5)</text>
+                  <text x="195" y="118" fill="#FBBF24" font-size="8" font-family="JetBrains Mono">BEHIND SQ (MAX 2)</text>
+                  <text x="115" y="255" fill="#38BDF8" font-size="8.5" font-family="JetBrains Mono">30-YD CIRCLE</text>
+                  <!-- Dynamic Fielders Layer -->
+                  <g id="radarFieldersLayer"></g>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Fielding & Bouncer Sliders -->
+            <div class="sliders-stack">
+              <div class="slider-item">
+                <div class="slider-top">
+                  <span>Fielders Outside 30-Yard Circle</span>
+                  <span class="mono-badge" id="valOutsideCircle">2 / 2 max</span>
+                </div>
+                <input type="range" id="sliderOutsideCircle" min="0" max="9" value="2" oninput="updateFieldingRadar()" />
+              </div>
+
+              <div class="slider-item">
+                <div class="slider-top">
+                  <span>Fielders on Leg Side (Law 28.4)</span>
+                  <span class="mono-badge" id="valLegSide">3 / 5 max</span>
+                </div>
+                <input type="range" id="sliderLegSide" min="0" max="9" value="3" oninput="updateFieldingRadar()" />
+              </div>
+
+              <div class="slider-item">
+                <div class="slider-top">
+                  <span>Fielders Behind Square Leg (Law 28.4)</span>
+                  <span class="mono-badge" id="valBehindSquare">1 / 2 max</span>
+                </div>
+                <input type="range" id="sliderBehindSquare" min="0" max="5" value="1" oninput="updateFieldingRadar()" />
+              </div>
+
+              <div class="slider-item">
+                <div class="slider-top">
+                  <span>Prior Bouncers Bowled This Over (Law 41.6)</span>
+                  <span class="mono-badge" id="valBouncersPrior">0 bowled</span>
+                </div>
+                <input type="range" id="sliderBouncersPrior" min="0" max="4" value="0" oninput="updateFieldingRadar()" />
+              </div>
+            </div>
+
+            <!-- Delivery Type Toggles -->
+            <div class="toggles-row">
+              <label class="checkbox-card">
+                <input type="checkbox" id="chkCurrentBouncer" onchange="updateFieldingRadar()" />
+                <div>
+                  <span class="chk-title">Current Ball is a Bouncer</span>
+                  <span class="chk-sub">Short-pitched above shoulder height (Law 41.6)</span>
+                </div>
+              </label>
+
+              <label class="checkbox-card">
+                <input type="checkbox" id="chkManualBeamer" onchange="updateFieldingRadar()" />
+                <div>
+                  <span class="chk-title">Manual Beamer Override</span>
+                  <span class="chk-sub">Flag waist-high full toss manually (Law 41.7)</span>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 2: MATCH ANALYTICS & BALL-BY-BALL SESSION LOG                     -->
+    <!-- ===================================================================== -->
+    <section id="tab-analytics" class="tab-section">
+      <div class="section-header-bar">
+        <div>
+          <span class="eyebrow">REAL-TIME OFFICIATING LEDGER</span>
+          <h2>Match Telemetry &amp; Ball-by-Ball Audit Log</h2>
+        </div>
+        <div class="header-actions">
+          <button class="btn-secondary-sm" onclick="exportMatchHistoryJson()">⬇ Export Official JSON Report</button>
+          <button class="btn-secondary-sm" onclick="exportMatchHistoryCsv()">⬇ Export CSV Ledger</button>
+          <button class="btn-danger-sm" onclick="clearMatchHistory()">Reset Session</button>
+        </div>
+      </div>
+
+      <!-- KPI Summary Cards -->
+      <div class="kpi-grid">
+        <div class="glass-card kpi-card">
+          <span class="kpi-label">TOTAL DELIVERIES AUDITED</span>
+          <div class="kpi-value" id="kpiTotalDeliveries">0</div>
+          <span class="kpi-foot">100% automated optical + rule verification</span>
+        </div>
+        <div class="glass-card kpi-card">
+          <span class="kpi-label">LEGAL DELIVERIES</span>
+          <div class="kpi-value emerald" id="kpiLegalDeliveries">0</div>
+          <span class="kpi-foot">Compliant with all 6 ICC/MCC laws</span>
+        </div>
+        <div class="glass-card kpi-card">
+          <span class="kpi-label">NO-BALLS FLAGGED</span>
+          <div class="kpi-value crimson" id="kpiNoBalls">0</div>
+          <span class="kpi-foot" id="kpiNoBallRate">0.0% infringement rate</span>
+        </div>
+        <div class="glass-card kpi-card">
+          <span class="kpi-label">AI VISION DETECTIONS</span>
+          <div class="kpi-value sky" id="kpiAiDetections">0</div>
+          <span class="kpi-foot">Front-foot oversteps &amp; waist beamers</span>
+        </div>
+      </div>
+
+      <!-- Session Delivery Table -->
+      <div class="glass-card table-card">
+        <table class="telemetry-table">
+          <thead>
+            <tr>
+              <th>DELIVERY ID</th>
+              <th>TIME</th>
+              <th>FORMAT / OVER</th>
+              <th>MATCHUP</th>
+              <th>CREASES AI</th>
+              <th>WAIST AI</th>
+              <th>VERDICT</th>
+              <th>INFRINGEMENTS / NOTES</th>
+              <th>LATENCY</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr>
+              <td colspan="9" class="empty-table-cell">
+                No deliveries adjudicated in this session yet. Run a preset in the Live Umpire Studio!
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 3: AI MODEL LAB, ONLINE DATASETS & ACCURACY BENCHMARKS            -->
+    <!-- ===================================================================== -->
+    <section id="tab-models" class="tab-section">
+      <div class="section-header-bar">
+        <div>
+          <span class="eyebrow">DEEP LEARNING ARCHITECTURE &amp; DATASET PROVENANCE</span>
+          <h2>Residual SE-CNN Model Benchmarks &amp; Online Datasets</h2>
+        </div>
+        <div class="header-actions">
+          <span class="status-pill-emerald" id="modelLabUpdatedBadge">Weights Verified &amp; Exported to ONNX</span>
+        </div>
+      </div>
+
+      <!-- Online Dataset Provenance Banner -->
+      <div class="glass-card provenance-card">
+        <div class="provenance-grid">
+          <div>
+            <span class="eyebrow">REAL-WORLD ONLINE TRAINING DATA</span>
+            <h3>Extended Multi-Source Cricket Broadcast Dataset</h3>
+            <p class="provenance-desc">
+              Instead of relying solely on synthetic shapes, our dual computer vision pipeline is trained and validated on
+              <strong>2,897 labeled cricket frames</strong> combining real television broadcast deliveries from open-source
+              repositories with physics-based trajectory &amp; turf domain adaptation.
+            </p>
+            <div class="source-pills" id="datasetSourcesList">
+              <span class="source-pill">📦 bhuvaneshd32/Cricket-No-Ball-Detection (Real Broadcast Frames)</span>
+              <span class="source-pill">📦 srishikumr/NoBallDetetection (Real Match Crease Dataset)</span>
+              <span class="source-pill">🎯 CreaseGuard Hybrid Broadcast Trajectory Engine</span>
+            </div>
+          </div>
+          <div class="architecture-summary-box">
+            <h4>Upgraded Residual SE-CNN Architecture</h4>
+            <ul class="arch-list">
+              <li><strong>Backbone:</strong> 4-Stage Residual Convolutional Network (`32 → 64 → 128 → 192 → 256` ch)</li>
+              <li><strong>Attention:</strong> Squeeze-and-Excitation (SE) channel attention in every residual stage</li>
+              <li><strong>Pooling:</strong> Concatenated `AdaptiveAvgPool2d` + `AdaptiveMaxPool2d` (512-d representation)</li>
+              <li><strong>Optimization:</strong> `AdamW` + `OneCycleLR` + Class-Balanced Label Smoothing (`ε=0.04`)</li>
+              <li><strong>Explainability:</strong> Real-time Stage-4 Grad-CAM spatial saliency heatmap overlay</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dual Model Benchmark Cards -->
+      <div class="models-comparison-grid" id="modelsBenchmarkGrid">
+        <!-- Populated dynamically from /api/metrics -->
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 4: COMMERCIAL SAAS PLATFORM, API INTEGRATION & PRICING            -->
+    <!-- ===================================================================== -->
+    <section id="tab-saas" class="tab-section">
+      <div class="section-header-bar">
+        <div>
+          <span class="eyebrow">OFFICIATING-AS-A-SERVICE (OaaS) PLATFORM</span>
+          <h2>Commercial Licensing, Edge Deployment &amp; Broadcast API</h2>
+        </div>
+      </div>
+
+      <!-- Pricing Tiers -->
+      <div class="pricing-grid">
+        <div class="glass-card price-card">
+          <span class="tier-tag">ACADEMY &amp; CLUB TIER</span>
+          <h3>CreaseGuard Coach</h3>
+          <div class="price-val">$149<span>/month per net</span></div>
+          <p class="price-desc">Automated front-foot &amp; bouncer discipline tracking for high-performance cricket academies and club nets.</p>
+          <ul class="tier-features">
+            <li>✓ Real-time Smartphone / IP Camera Crease Detection</li>
+            <li>✓ Bowler Overstepping Analytics &amp; Habit Reports</li>
+            <li>✓ Up to 15,000 API Delivery Adjudications / mo</li>
+            <li>✓ CSV &amp; JSON Session Ledger Export</li>
+          </ul>
+          <button class="btn-outline-full" onclick="switchTab('studio')">Launch Interactive Demo</button>
+        </div>
+
+        <div class="glass-card price-card featured">
+          <div class="popular-ribbon">MOST POPULAR • DOMESTIC LEAGUES</div>
+          <span class="tier-tag">TOURNAMENT &amp; BROADCAST TIER</span>
+          <h3>CreaseGuard Pro Broadcast</h3>
+          <div class="price-val">$1,490<span>/tournament</span></div>
+          <p class="price-desc">Low-latency Dual-CV + ICC Rule Engine for T20 franchises, state associations, and live streaming production.</p>
+          <ul class="tier-features">
+            <li>✓ Synchronized Crease Cam (Law 21.5) &amp; Waist Cam (Law 41.7)</li>
+            <li>✓ Live Grad-CAM HUD Graphics for TV Third-Umpire</li>
+            <li>✓ Full T20I, IPL, ODI, Test &amp; 100-Ball Rule Engine</li>
+            <li>✓ Local ONNX Runtime Edge Deployment (&lt;15ms latency)</li>
+          </ul>
+          <button class="btn-primary-full" onclick="switchTab('studio')">Active in Current Workspace</button>
+        </div>
+
+        <div class="glass-card price-card">
+          <span class="tier-tag">INTERNATIONAL FEDERATION</span>
+          <h3>Enterprise Stadium Suite</h3>
+          <div class="price-val">Custom<span>/multi-venue SLA</span></div>
+          <p class="price-desc">Dedicated stadium edge clusters with high-speed 240fps camera ingestion and official scorer console integration.</p>
+          <ul class="tier-features">
+            <li>✓ Custom Camera Calibration &amp; Fine-Tuned Weights</li>
+            <li>✓ 99.99% Uptime SLA &amp; Dedicated Solutions Engineer</li>
+            <li>✓ Direct SDI / NDI Broadcast Graphics Key &amp; Fill Output</li>
+            <li>✓ Unlimited Venue &amp; Match Telemetry Retention</li>
+          </ul>
+          <a href="/docs" target="_blank" class="btn-outline-full" style="display:block;text-align:center;text-decoration:none;">Explore Enterprise API Specs ↗</a>
+        </div>
+      </div>
+
+      <!-- Developer API Quickstart -->
+      <div class="glass-card api-integration-card">
+        <div class="api-cols">
+          <div>
+            <span class="eyebrow">REST API &amp; SDK INTEGRATION</span>
+            <h3>Seamless Hand-in-Hand Backend Integration</h3>
+            <p class="provenance-desc">
+              Integrate CreaseGuard Pro directly into broadcast graphics pipelines, mobile scoring apps, or automated
+              umpire earpieces via a single multipart `POST /check-delivery` request.
+            </p>
+            <div class="endpoint-badges">
+              <div class="ep-item"><span class="method post">POST</span> <code>/check-delivery</code> — Dual-CV + ICC Rule Adjudication</div>
+              <div class="ep-item"><span class="method get">GET</span> <code>/api/metrics</code> — Model Accuracy &amp; Confusion Matrix</div>
+              <div class="ep-item"><span class="method get">GET</span> <code>/api/samples</code> — Real Broadcast Replay Presets</div>
+              <div class="ep-item"><span class="method get">GET</span> <code>/api/history</code> — Live Session Telemetry Ledger</div>
+            </div>
+          </div>
+          <div class="code-snippet-box">
+            <div class="code-top">
+              <span>Python Production SDK Example</span>
+              <button class="btn-copy" onclick="copyApiSnippet()">Copy Snippet</button>
+            </div>
+            <pre id="apiCodeSnippet"><code>import requests
+
+url = "http://127.0.0.1:8000/check-delivery"
+files = {
+    "foot_image": open("crease_frame.jpg", "rb"),
+    "waist_image": open("waist_frame.jpg", "rb"),
+}
+payload = {
+    "match_format": "IPL",
+    "over": 18,
+    "ball_index_in_innings": 112,
+    "bouncers_in_over_before": 1,
+    "is_current_ball_bouncer": False,
+    "fielders_leg_side": 4,
+    "fielders_behind_square": 1,
+    "fielders_outside_circle": 5,
+}
+res = requests.post(url, files=files, data=payload).json()
+print(res["verdict"], res["ai_overstep_probability"], res["reasons"])</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
