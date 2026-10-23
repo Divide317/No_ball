@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import torch
 import torch.nn.functional as F
 from PIL import Image
+from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -18,16 +19,14 @@ from torchvision import transforms
 
 from cv_model import CricketClassifier, generate_gradcam_telemetry
 from rule_engine import CricketRuleEngine
-from generate_data import create_synthetic_crease_image, create_synthetic_waist_image
 
 # Initialize FastAPI server
 app = FastAPI(
     title="CreaseGuard Pro - Cricket No-Ball Detection API",
-    description="Combines dual PyTorch CNNs for crease and waist checks with an ICC/MCC rule engine.",
+    description="Combines dual PyTorch CNNs for crease and waist checks with an ICC/MCC rule engine and automated folder watching.",
     version="3.0.0",
 )
 
-# Enable CORS so the frontend can communicate with the API without browser restrictions
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -54,150 +53,263 @@ img_transform = transforms.Compose([
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_BACKEND = os.path.dirname(SCRIPT_DIR)
+WORKSPACE_ROOT = os.path.dirname(PROJECT_BACKEND)
 FRONTEND_DIR = os.path.join(PROJECT_BACKEND, "frontend")
 MODELS_DIR = os.path.join(PROJECT_BACKEND, "models")
 SAMPLES_DIR = os.path.join(PROJECT_BACKEND, "data", "samples")
 
-# Mount the frontend folder so CSS and JS files are served at /static
+# Default watched directory containing 'crease' and 'waist' subfolders
+DEFAULT_WATCH_DIR = os.path.join(WORKSPACE_ROOT, "samples")
+if not os.path.exists(DEFAULT_WATCH_DIR):
+    DEFAULT_WATCH_DIR = os.path.join(PROJECT_BACKEND, "samples")
+
+watch_state = {
+    "folder_path": DEFAULT_WATCH_DIR,
+}
+
 if os.path.exists(FRONTEND_DIR):
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 
-# Pre-configured match scenarios for quick testing in the web interface
-SAMPLE_PRESETS = [
-    {
-        "id": "real_overstep",
-        "title": "Real Broadcast: Front-Foot Overstep",
-        "subtitle": "MCC Law 21.5 | Real TV Stump/Crease Camera Frame",
-        "badge": "NO-BALL (VISION)",
-        "badge_type": "danger",
-        "foot_file": "real_noball_1.jpg",
-        "waist_file": "waist_legal_1.jpg",
-        "context": {
-            "match_format": "T20",
-            "over": 17,
-            "ball_index_in_innings": 104,
-            "bouncers_in_over_before": 0,
-            "is_current_ball_bouncer": False,
-            "is_beamer": False,
-            "fielders_leg_side": 4,
-            "fielders_behind_square": 1,
-            "fielders_outside_circle": 5,
-            "bowler_name": "M. Starc",
-            "batter_name": "V. Kohli",
+class FolderSelectRequest(BaseModel):
+    folder_path: str
+
+
+def resolve_watch_folder(raw_path: str) -> str:
+    """
+    Resolves user-supplied folder paths (either absolute paths or relative folder
+    names like 'samples' or 'live_feed') to an existing directory on disk.
+    """
+    cleaned = raw_path.strip().strip('"').strip("'")
+    if os.path.isabs(cleaned) and os.path.exists(cleaned):
+        return os.path.abspath(cleaned)
+
+    # Check relative to workspace root and backend root
+    for base in [WORKSPACE_ROOT, PROJECT_BACKEND]:
+        candidate = os.path.abspath(os.path.join(base, cleaned))
+        if os.path.exists(candidate):
+            return candidate
+
+    # If it doesn't exist yet, create it under workspace root
+    target = (
+        os.path.abspath(cleaned)
+        if os.path.isabs(cleaned)
+        else os.path.abspath(os.path.join(WORKSPACE_ROOT, cleaned))
+    )
+    os.makedirs(os.path.join(target, "crease"), exist_ok=True)
+    os.makedirs(os.path.join(target, "waist"), exist_ok=True)
+    return target
+
+
+def scan_watched_subfolders(folder_path: str):
+    """
+    Scans the 'crease' and 'waist' subfolders inside the target directory.
+    Sorts images by modification time (newest first) so newly added files are
+    picked up automatically as soon as they land in the folder.
+    """
+    crease_dir = os.path.join(folder_path, "crease")
+    waist_dir = os.path.join(folder_path, "waist")
+    os.makedirs(crease_dir, exist_ok=True)
+    os.makedirs(waist_dir, exist_ok=True)
+
+    valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+
+    def list_images(sub_dir):
+        items = []
+        if not os.path.exists(sub_dir):
+            return items
+        for fname in os.listdir(sub_dir):
+            ext = os.path.splitext(fname)[1].lower()
+            full_p = os.path.join(sub_dir, fname)
+            if ext in valid_exts and os.path.isfile(full_p):
+                mtime = os.path.getmtime(full_p)
+                items.append({"name": fname, "mtime": round(mtime, 2), "size": os.path.getsize(full_p)})
+        # Sort newest modified/added file first, then alphabetically
+        items.sort(key=lambda x: (-x["mtime"], x["name"]))
+        return items
+
+    crease_files = list_images(crease_dir)
+    waist_files = list_images(waist_dir)
+
+    latest_crease = crease_files[0]["name"] if crease_files else None
+    latest_waist = waist_files[0]["name"] if waist_files else None
+
+    sig_c = f"{latest_crease}:{crease_files[0]['mtime']}" if crease_files else "none"
+    sig_w = f"{latest_waist}:{waist_files[0]['mtime']}" if waist_files else "none"
+    signature = f"{folder_path}|{len(crease_files)}|{sig_c}|{len(waist_files)}|{sig_w}"
+
+    return {
+        "folder_path": folder_path,
+        "crease_subfolder": crease_dir,
+        "waist_subfolder": waist_dir,
+        "crease_files": crease_files,
+        "waist_files": waist_files,
+        "latest_crease": latest_crease,
+        "latest_waist": latest_waist,
+        "signature": signature,
+    }
+
+
+def run_delivery_pipeline(
+    pil_foot: Image.Image,
+    pil_waist: Optional[Image.Image],
+    match_format: str,
+    over: int,
+    ball_index_in_innings: int,
+    bouncers_in_over_before: int,
+    is_current_ball_bouncer: bool,
+    is_beamer: bool,
+    fielders_leg_side: int,
+    fielders_behind_square: int,
+    fielders_outside_circle: int,
+    bowler_name: str = "Bowler",
+    batter_name: str = "Batter",
+    foot_source_name: str = "crease.jpg",
+    waist_source_name: Optional[str] = None,
+):
+    """
+    Core adjudication pipeline shared by both folder-watcher ingestion
+    and direct multipart uploads.
+    """
+    t0 = time.perf_counter()
+    reasons = []
+    is_no_ball = False
+
+    overstep_prob = 0.0
+    beamer_prob = 0.0
+    has_waist_img = pil_waist is not None
+    foot_telemetry_b64 = None
+    waist_telemetry_b64 = None
+    manual_beamer_flag = bool(is_beamer)
+
+    # Step 1: Evaluate front-foot landing with the Crease CNN
+    try:
+        if crease_model is not None:
+            tensor_foot = img_transform(pil_foot).unsqueeze(0).to(device)
+            with torch.no_grad():
+                outputs = crease_model(tensor_foot)
+                overstep_prob = F.softmax(outputs, dim=1)[0][1].item()
+
+            if overstep_prob > 0.50:
+                is_no_ball = True
+                reasons.append(
+                    f"Front-foot overstepping detected by AI Vision ({overstep_prob*100:.1f}% confidence, MCC Law 21.5)."
+                )
+
+            foot_telemetry_b64 = generate_gradcam_telemetry(
+                crease_model,
+                pil_foot,
+                img_transform,
+                device,
+                cam_type="crease",
+                prob_illegal=overstep_prob,
+            )
+    except Exception as e:
+        reasons.append(f"Crease image evaluation failed: {e}")
+
+    # Step 2: Evaluate waist-high full toss if a waist frame is present
+    if pil_waist is not None:
+        try:
+            if waist_model is not None:
+                tensor_waist = img_transform(pil_waist).unsqueeze(0).to(device)
+                with torch.no_grad():
+                    outputs = waist_model(tensor_waist)
+                    # In ImageFolder(['beamer', 'legal_waist']), 'beamer' is class index 0
+                    beamer_prob = F.softmax(outputs, dim=1)[0][0].item()
+
+                if beamer_prob > 0.50:
+                    is_beamer = True
+                    reasons.append(
+                        f"Waist-high full toss (beamer) detected by AI Vision ({beamer_prob*100:.1f}% confidence, MCC Law 41.7)."
+                    )
+
+                waist_telemetry_b64 = generate_gradcam_telemetry(
+                    waist_model,
+                    pil_waist,
+                    img_transform,
+                    device,
+                    cam_type="waist",
+                    prob_illegal=beamer_prob,
+                )
+        except Exception as e:
+            reasons.append(f"Waist image evaluation failed: {e}")
+
+    # Step 3: Run deterministic ICC/MCC rule checks
+    rule_violation, rule_reasons = rule_engine.check_delivery(
+        match_format=match_format,
+        over=over,
+        ball_index_in_innings=ball_index_in_innings,
+        bouncers_in_over_before=bouncers_in_over_before,
+        is_current_ball_bouncer=is_current_ball_bouncer,
+        is_beamer=is_beamer,
+        fielders_leg_side=fielders_leg_side,
+        fielders_behind_square=fielders_behind_square,
+        fielders_outside_circle=fielders_outside_circle,
+    )
+
+    if rule_violation:
+        is_no_ball = True
+        reasons.extend(
+            [r for r in rule_reasons if "beamer" not in r.lower() or beamer_prob <= 0.50]
+        )
+        if beamer_prob <= 0.50 and is_beamer:
+            reasons.append("Waist-high full toss (beamer) flagged manually (MCC Law 41.7).")
+
+    rule_details = rule_engine.check_delivery_detailed(
+        match_format=match_format,
+        over=over,
+        ball_index_in_innings=ball_index_in_innings,
+        bouncers_in_over_before=bouncers_in_over_before,
+        is_current_ball_bouncer=is_current_ball_bouncer,
+        is_beamer=is_beamer,
+        fielders_leg_side=fielders_leg_side,
+        fielders_behind_square=fielders_behind_square,
+        fielders_outside_circle=fielders_outside_circle,
+        overstep_prob=overstep_prob,
+        beamer_prob=beamer_prob if has_waist_img else (1.0 if is_beamer else 0.0),
+    )
+
+    inference_ms = round((time.perf_counter() - t0) * 1000, 1)
+    verdict = "NO-BALL" if is_no_ball else "LEGAL DELIVERY"
+
+    record = {
+        "delivery_id": str(uuid.uuid4())[:8].upper(),
+        "timestamp": time.strftime("%H:%M:%S"),
+        "match_format": match_format,
+        "over_ball": f"{over}.{((ball_index_in_innings - 1) % 6) + 1}",
+        "bowler_name": bowler_name,
+        "batter_name": batter_name,
+        "foot_file": foot_source_name,
+        "waist_file": waist_source_name,
+        "is_no_ball": is_no_ball,
+        "verdict": verdict,
+        "free_hit_awarded": rule_details["free_hit_awarded"],
+        "ai_overstep_probability": round(overstep_prob, 4),
+        "ai_beamer_probability": round(beamer_prob, 4) if has_waist_img else None,
+        "manual_beamer": manual_beamer_flag,
+        "reasons": reasons,
+        "inference_time_ms": inference_ms,
+    }
+    delivery_history.append(record)
+
+    return {
+        "delivery_id": record["delivery_id"],
+        "timestamp": record["timestamp"],
+        "foot_file": foot_source_name,
+        "waist_file": waist_source_name,
+        "is_no_ball": is_no_ball,
+        "verdict": verdict,
+        "free_hit_awarded": rule_details["free_hit_awarded"],
+        "ai_overstep_probability": round(overstep_prob, 4),
+        "ai_beamer_probability": round(beamer_prob, 4) if has_waist_img else None,
+        "inference_time_ms": inference_ms,
+        "reasons": reasons,
+        "rule_details": rule_details,
+        "telemetry": {
+            "foot_gradcam": foot_telemetry_b64,
+            "waist_gradcam": waist_telemetry_b64,
         },
-    },
-    {
-        "id": "real_legal",
-        "title": "Real Broadcast: Fair Delivery Behind Line",
-        "subtitle": "MCC Law 21.5 | Heel Grounded Behind Popping Crease",
-        "badge": "LEGAL DELIVERY",
-        "badge_type": "success",
-        "foot_file": "real_legal_1.jpg",
-        "waist_file": "waist_legal_1.jpg",
-        "context": {
-            "match_format": "T20",
-            "over": 3,
-            "ball_index_in_innings": 21,
-            "bouncers_in_over_before": 0,
-            "is_current_ball_bouncer": False,
-            "is_beamer": False,
-            "fielders_leg_side": 3,
-            "fielders_behind_square": 1,
-            "fielders_outside_circle": 2,
-            "bowler_name": "J. Bumrah",
-            "batter_name": "J. Buttler",
-        },
-    },
-    {
-        "id": "real_tight_noball",
-        "title": "Third-Umpire Review: Close Margin Overstep",
-        "subtitle": "MCC Law 21.5 | Tight Crease Line Evaluation",
-        "badge": "NO-BALL (CLOSE CALL)",
-        "badge_type": "danger",
-        "foot_file": "real_noball_2.jpg",
-        "waist_file": "waist_legal_1.jpg",
-        "context": {
-            "match_format": "ODI",
-            "over": 46,
-            "ball_index_in_innings": 278,
-            "bouncers_in_over_before": 1,
-            "is_current_ball_bouncer": False,
-            "is_beamer": False,
-            "fielders_leg_side": 4,
-            "fielders_behind_square": 2,
-            "fielders_outside_circle": 5,
-            "bowler_name": "P. Cummins",
-            "batter_name": "R. Sharma",
-        },
-    },
-    {
-        "id": "waist_beamer",
-        "title": "Dangerous Delivery: Waist-High Beamer",
-        "subtitle": "MCC Law 41.7 | Full Toss Above Batter Waist Plane",
-        "badge": "NO-BALL (BEAMER)",
-        "badge_type": "danger",
-        "foot_file": "real_legal_2.jpg",
-        "waist_file": "waist_beamer_1.jpg",
-        "context": {
-            "match_format": "IPL",
-            "over": 19,
-            "ball_index_in_innings": 116,
-            "bouncers_in_over_before": 1,
-            "is_current_ball_bouncer": False,
-            "is_beamer": False,
-            "fielders_leg_side": 4,
-            "fielders_behind_square": 1,
-            "fielders_outside_circle": 5,
-            "bowler_name": "K. Rabada",
-            "batter_name": "H. Klaasen",
-        },
-    },
-    {
-        "id": "powerplay_breach",
-        "title": "Tactical Fault: Powerplay Circle Violation",
-        "subtitle": "ICC Clause 28.7 | 3 Fielders Outside Circle in Over 4",
-        "badge": "NO-BALL (FIELDING)",
-        "badge_type": "warning",
-        "foot_file": "real_legal_1.jpg",
-        "waist_file": "waist_legal_1.jpg",
-        "context": {
-            "match_format": "T20",
-            "over": 3,
-            "ball_index_in_innings": 22,
-            "bouncers_in_over_before": 0,
-            "is_current_ball_bouncer": False,
-            "is_beamer": False,
-            "fielders_leg_side": 4,
-            "fielders_behind_square": 1,
-            "fielders_outside_circle": 3,
-            "bowler_name": "T. Boult",
-            "batter_name": "S. Gill",
-        },
-    },
-    {
-        "id": "bouncer_exceeded",
-        "title": "Bowler Quota: 2nd Bouncer in T20I Over",
-        "subtitle": "MCC Law 41.6 | Exceeds 1 Short-Pitched Limit in T20I",
-        "badge": "NO-BALL (BOUNCER)",
-        "badge_type": "warning",
-        "foot_file": "real_legal_2.jpg",
-        "waist_file": "waist_legal_1.jpg",
-        "context": {
-            "match_format": "T20",
-            "over": 14,
-            "ball_index_in_innings": 87,
-            "bouncers_in_over_before": 1,
-            "is_current_ball_bouncer": True,
-            "is_beamer": False,
-            "fielders_leg_side": 4,
-            "fielders_behind_square": 1,
-            "fielders_outside_circle": 5,
-            "bowler_name": "M. Wood",
-            "batter_name": "S. Yadav",
-        },
-    },
-]
+    }
 
 
 @app.on_event("startup")
@@ -238,7 +350,6 @@ def load_cv_models():
 
 @app.get("/")
 def read_root(request: Request):
-    # Serve the web dashboard when opened in a browser, or return JSON status for API callers
     frontend_index = os.path.join(FRONTEND_DIR, "index.html")
     accept = request.headers.get("accept", "")
     if "text/html" in accept and os.path.exists(frontend_index):
@@ -273,7 +384,94 @@ def get_api_status():
         "crease_onnx_ready": os.path.exists(os.path.join(MODELS_DIR, "crease_classifier.onnx")),
         "waist_onnx_ready": os.path.exists(os.path.join(MODELS_DIR, "waist_classifier.onnx")),
         "deliveries_analyzed_session": len(delivery_history),
+        "watched_folder": watch_state["folder_path"],
     }
+
+
+@app.get("/api/folder/status")
+def get_watched_folder_status():
+    """Returns the current state of the watched folder and its 'crease' and 'waist' subfolders."""
+    return scan_watched_subfolders(watch_state["folder_path"])
+
+
+@app.post("/api/folder/select")
+def set_watched_folder(req: FolderSelectRequest):
+    """Updates the target folder destination to monitor for 'crease' and 'waist' images."""
+    resolved = resolve_watch_folder(req.folder_path)
+    watch_state["folder_path"] = resolved
+    return scan_watched_subfolders(resolved)
+
+
+@app.get("/api/folder/image/{sub}")
+def get_watched_folder_image(sub: str, file: str):
+    """Serves an image file directly from the watched 'crease' or 'waist' subfolder."""
+    if sub not in ["crease", "waist"]:
+        raise HTTPException(status_code=400, detail="Subfolder must be 'crease' or 'waist'")
+    safe_file = os.path.basename(file)
+    img_path = os.path.join(watch_state["folder_path"], sub, safe_file)
+    if not os.path.exists(img_path):
+        raise HTTPException(status_code=404, detail="Image not found in watched subfolder")
+    return FileResponse(img_path)
+
+
+@app.post("/api/folder/evaluate")
+def evaluate_from_watched_folder(
+    crease_file: Optional[str] = Form(None),
+    waist_file: Optional[str] = Form(None),
+    match_format: str = Form("T20"),
+    over: int = Form(3),
+    ball_index_in_innings: int = Form(21),
+    bouncers_in_over_before: int = Form(0),
+    is_current_ball_bouncer: bool = Form(False),
+    is_beamer: bool = Form(False),
+    fielders_leg_side: int = Form(3),
+    fielders_behind_square: int = Form(1),
+    fielders_outside_circle: int = Form(2),
+    bowler_name: str = Form("J. Bumrah"),
+    batter_name: str = Form("J. Buttler"),
+):
+    """
+    Automatically picks up the latest (or specified) images from the watched
+    <folder>/crease and <folder>/waist subfolders and runs the full detection pipeline.
+    """
+    status = scan_watched_subfolders(watch_state["folder_path"])
+    c_name = crease_file or status["latest_crease"]
+    w_name = waist_file if waist_file is not None else status["latest_waist"]
+
+    if not c_name:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No images found inside {status['crease_subfolder']}",
+        )
+
+    c_path = os.path.join(status["crease_subfolder"], os.path.basename(c_name))
+    if not os.path.exists(c_path):
+        raise HTTPException(status_code=404, detail=f"Crease image not found: {c_name}")
+
+    pil_foot = Image.open(c_path).convert("RGB")
+    pil_waist = None
+    if w_name and w_name != "NONE":
+        w_path = os.path.join(status["waist_subfolder"], os.path.basename(w_name))
+        if os.path.exists(w_path):
+            pil_waist = Image.open(w_path).convert("RGB")
+
+    return run_delivery_pipeline(
+        pil_foot=pil_foot,
+        pil_waist=pil_waist,
+        match_format=match_format,
+        over=over,
+        ball_index_in_innings=ball_index_in_innings,
+        bouncers_in_over_before=bouncers_in_over_before,
+        is_current_ball_bouncer=is_current_ball_bouncer,
+        is_beamer=is_beamer,
+        fielders_leg_side=fielders_leg_side,
+        fielders_behind_square=fielders_behind_square,
+        fielders_outside_circle=fielders_outside_circle,
+        bowler_name=bowler_name,
+        batter_name=batter_name,
+        foot_source_name=c_name,
+        waist_source_name=w_name if pil_waist else None,
+    )
 
 
 @app.get("/api/metrics")
@@ -284,28 +482,9 @@ def get_training_metrics():
             return json.load(f)
     return {
         "updated_at": None,
-        "dataset_sources": ["Synthetic Fallback"],
+        "dataset_sources": ["Curated Broadcast Dataset"],
         "models": {},
     }
-
-
-@app.get("/api/samples")
-def get_sample_presets():
-    return {"samples": SAMPLE_PRESETS}
-
-
-@app.get("/api/samples/{sample_id}/image/{cam_type}")
-def get_sample_image(sample_id: str, cam_type: str):
-    preset = next((p for p in SAMPLE_PRESETS if p["id"] == sample_id), None)
-    if not preset:
-        raise HTTPException(status_code=404, detail="Sample preset not found")
-
-    filename = preset["foot_file"] if cam_type == "foot" else preset["waist_file"]
-    file_path = os.path.join(SAMPLES_DIR, filename)
-    if os.path.exists(file_path):
-        return FileResponse(file_path, media_type="image/jpeg")
-
-    return JSONResponse(status_code=404, content={"detail": "Sample image missing"})
 
 
 @app.get("/api/history")
@@ -353,156 +532,31 @@ async def check_delivery(
     bowler_name: str = Form("Bowler", description="Bowler name for match log"),
     batter_name: str = Form("Batter", description="Batter name for match log"),
 ):
-    """
-    Main endpoint that processes a single delivery:
-    1. Runs the crease image through the front-foot CNN.
-    2. Optionally runs the waist image through the beamer CNN.
-    3. Checks fielding positions and bouncer limits via the rule engine.
-    4. Returns the combined verdict, probabilities, and Grad-CAM heatmaps.
-    """
-    t0 = time.perf_counter()
-    reasons = []
-    is_no_ball = False
+    foot_content = await foot_image.read()
+    pil_foot = Image.open(io.BytesIO(foot_content)).convert("RGB")
 
-    overstep_prob = 0.0
-    beamer_prob = 0.0
-    has_waist_img = False
-    foot_telemetry_b64 = None
-    waist_telemetry_b64 = None
-    manual_beamer_flag = bool(is_beamer)
-
-    # Step 1: Evaluate front-foot landing with the Crease CNN
-    try:
-        foot_content = await foot_image.read()
-        pil_foot = Image.open(io.BytesIO(foot_content)).convert("RGB")
-        if crease_model is not None:
-            tensor_foot = img_transform(pil_foot).unsqueeze(0).to(device)
-            with torch.no_grad():
-                outputs = crease_model(tensor_foot)
-                # Class 0 is 'legal', Class 1 is 'no_ball'
-                overstep_prob = F.softmax(outputs, dim=1)[0][1].item()
-
-            if overstep_prob > 0.50:
-                is_no_ball = True
-                reasons.append(
-                    f"Front-foot overstepping detected by AI Vision ({overstep_prob*100:.1f}% confidence, MCC Law 21.5)."
-                )
-
-            foot_telemetry_b64 = generate_gradcam_telemetry(
-                crease_model,
-                pil_foot,
-                img_transform,
-                device,
-                cam_type="crease",
-                prob_illegal=overstep_prob,
-            )
-    except Exception as e:
-        reasons.append(f"Crease image evaluation failed: {e}")
-
-    # Step 2: Evaluate waist-high full toss if a second camera frame was uploaded
+    pil_waist = None
+    waist_name = None
     if waist_image is not None and getattr(waist_image, "filename", "") != "":
-        try:
-            waist_content = await waist_image.read()
-            if len(waist_content) > 0:
-                has_waist_img = True
-                pil_waist = Image.open(io.BytesIO(waist_content)).convert("RGB")
-                if waist_model is not None:
-                    tensor_waist = img_transform(pil_waist).unsqueeze(0).to(device)
-                    with torch.no_grad():
-                        outputs = waist_model(tensor_waist)
-                        # In ImageFolder(['beamer', 'legal_waist']), 'beamer' is class index 0
-                        beamer_prob = F.softmax(outputs, dim=1)[0][0].item()
+        waist_content = await waist_image.read()
+        if len(waist_content) > 0:
+            pil_waist = Image.open(io.BytesIO(waist_content)).convert("RGB")
+            waist_name = waist_image.filename
 
-                    if beamer_prob > 0.50:
-                        is_beamer = True
-                        reasons.append(
-                            f"Waist-high full toss (beamer) detected by AI Vision ({beamer_prob*100:.1f}% confidence, MCC Law 41.7)."
-                        )
-
-                    waist_telemetry_b64 = generate_gradcam_telemetry(
-                        waist_model,
-                        pil_waist,
-                        img_transform,
-                        device,
-                        cam_type="waist",
-                        prob_illegal=beamer_prob,
-                    )
-        except Exception as e:
-            reasons.append(f"Waist image evaluation failed: {e}")
-
-    # Step 3: Run deterministic ICC/MCC rule checks
-    try:
-        rule_violation, rule_reasons = rule_engine.check_delivery(
-            match_format=match_format,
-            over=over,
-            ball_index_in_innings=ball_index_in_innings,
-            bouncers_in_over_before=bouncers_in_over_before,
-            is_current_ball_bouncer=is_current_ball_bouncer,
-            is_beamer=is_beamer,
-            fielders_leg_side=fielders_leg_side,
-            fielders_behind_square=fielders_behind_square,
-            fielders_outside_circle=fielders_outside_circle,
-        )
-
-        if rule_violation:
-            is_no_ball = True
-            # Avoid duplicating the beamer message if the AI already added it above
-            reasons.extend(
-                [r for r in rule_reasons if "beamer" not in r.lower() or beamer_prob <= 0.50]
-            )
-            if beamer_prob <= 0.50 and is_beamer:
-                reasons.append("Waist-high full toss (beamer) flagged manually (MCC Law 41.7).")
-
-        rule_details = rule_engine.check_delivery_detailed(
-            match_format=match_format,
-            over=over,
-            ball_index_in_innings=ball_index_in_innings,
-            bouncers_in_over_before=bouncers_in_over_before,
-            is_current_ball_bouncer=is_current_ball_bouncer,
-            is_beamer=is_beamer,
-            fielders_leg_side=fielders_leg_side,
-            fielders_behind_square=fielders_behind_square,
-            fielders_outside_circle=fielders_outside_circle,
-            overstep_prob=overstep_prob,
-            beamer_prob=beamer_prob if has_waist_img else (1.0 if is_beamer else 0.0),
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error evaluating rule engine: {e}")
-
-    inference_ms = round((time.perf_counter() - t0) * 1000, 1)
-    verdict = "NO-BALL" if is_no_ball else "LEGAL DELIVERY"
-
-    record = {
-        "delivery_id": str(uuid.uuid4())[:8].upper(),
-        "timestamp": time.strftime("%H:%M:%S"),
-        "match_format": match_format,
-        "over_ball": f"{over}.{((ball_index_in_innings - 1) % 6) + 1}",
-        "bowler_name": bowler_name,
-        "batter_name": batter_name,
-        "is_no_ball": is_no_ball,
-        "verdict": verdict,
-        "free_hit_awarded": rule_details["free_hit_awarded"],
-        "ai_overstep_probability": round(overstep_prob, 4),
-        "ai_beamer_probability": round(beamer_prob, 4) if has_waist_img else None,
-        "manual_beamer": manual_beamer_flag,
-        "reasons": reasons,
-        "inference_time_ms": inference_ms,
-    }
-    delivery_history.append(record)
-
-    return {
-        "delivery_id": record["delivery_id"],
-        "timestamp": record["timestamp"],
-        "is_no_ball": is_no_ball,
-        "verdict": verdict,
-        "free_hit_awarded": rule_details["free_hit_awarded"],
-        "ai_overstep_probability": round(overstep_prob, 4),
-        "ai_beamer_probability": round(beamer_prob, 4) if has_waist_img else None,
-        "inference_time_ms": inference_ms,
-        "reasons": reasons,
-        "rule_details": rule_details,
-        "telemetry": {
-            "foot_gradcam": foot_telemetry_b64,
-            "waist_gradcam": waist_telemetry_b64,
-        },
-    }
+    return run_delivery_pipeline(
+        pil_foot=pil_foot,
+        pil_waist=pil_waist,
+        match_format=match_format,
+        over=over,
+        ball_index_in_innings=ball_index_in_innings,
+        bouncers_in_over_before=bouncers_in_over_before,
+        is_current_ball_bouncer=is_current_ball_bouncer,
+        is_beamer=is_beamer,
+        fielders_leg_side=fielders_leg_side,
+        fielders_behind_square=fielders_behind_square,
+        fielders_outside_circle=fielders_outside_circle,
+        bowler_name=bowler_name,
+        batter_name=batter_name,
+        foot_source_name=foot_image.filename or "crease.jpg",
+        waist_source_name=waist_name,
+    )

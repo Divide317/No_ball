@@ -243,28 +243,44 @@ def augment_crease_with_synthetic_frames(project_backend: str, count_per_class: 
 
 def prepare_curated_samples(project_backend: str):
     """
-    Copies verified test images into data/samples/ and samples/ for live demos.
+    Populates the watched folder structure (<folder>/crease and <folder>/waist)
+    with verified sample images for both 'samples/' and 'live_feed/'.
     """
     samples_dir = os.path.join(project_backend, "data", "samples")
-    backend_samples = os.path.join(project_backend, "samples")
-    workspace_samples = os.path.join(os.path.dirname(project_backend), "samples")
     os.makedirs(samples_dir, exist_ok=True)
-    os.makedirs(backend_samples, exist_ok=True)
-    os.makedirs(workspace_samples, exist_ok=True)
 
-    demo_mappings = [
+    root_dir = os.path.dirname(project_backend)
+    target_roots = [
+        os.path.join(project_backend, "samples"),
+        os.path.join(root_dir, "samples"),
+        os.path.join(project_backend, "live_feed"),
+        os.path.join(root_dir, "live_feed"),
+    ]
+
+    crease_mappings = [
         ("real_noball_1.jpg", "1_front_foot_noball_overstep.jpg"),
         ("real_noball_2.jpg", "2_front_foot_noball_close_margin.jpg"),
         ("real_legal_1.jpg", "3_legal_delivery_behind_crease.jpg"),
         ("real_legal_2.jpg", "4_legal_delivery_fair_landing.jpg"),
-        ("waist_beamer_1.jpg", "5_waist_high_beamer_noball.jpg"),
-        ("waist_legal_1.jpg", "6_waist_legal_height_delivery.jpg"),
     ]
-    for src_name, demo_name in demo_mappings:
-        src_p = os.path.join(samples_dir, src_name)
-        if os.path.exists(src_p):
-            shutil.copyfile(src_p, os.path.join(backend_samples, demo_name))
-            shutil.copyfile(src_p, os.path.join(workspace_samples, demo_name))
+    waist_mappings = [
+        ("waist_legal_1.jpg", "1_waist_legal_height_delivery.jpg"),
+        ("waist_beamer_1.jpg", "2_waist_high_beamer_noball.jpg"),
+    ]
+
+    for target in target_roots:
+        c_sub = os.path.join(target, "crease")
+        w_sub = os.path.join(target, "waist")
+        os.makedirs(c_sub, exist_ok=True)
+        os.makedirs(w_sub, exist_ok=True)
+        for src_name, dst_name in crease_mappings:
+            src_p = os.path.join(samples_dir, src_name)
+            if os.path.exists(src_p):
+                shutil.copyfile(src_p, os.path.join(c_sub, dst_name))
+        for src_name, dst_name in waist_mappings:
+            src_p = os.path.join(samples_dir, src_name)
+            if os.path.exists(src_p):
+                shutil.copyfile(src_p, os.path.join(w_sub, dst_name))
 
 
 def setup_all_datasets(project_backend: str = None):

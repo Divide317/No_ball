@@ -5,6 +5,26 @@ const API_BASE = window.location.origin.includes("http")
 let state = {
   activeFormat: "T20",
   cameraViewMode: "raw",
+  // Mode can be "server_folder", "browser_folder", or "manual_file"
+  sourceMode: "server_folder",
+  watchedFolderPath: "samples",
+  lastFolderSignature: null,
+  autoWatchEnabled: true,
+  watchIntervalId: null,
+  autoCycleEnabled: false,
+  autoCycleIntervalId: null,
+
+  // Server folder file lists
+  creaseFiles: [],
+  waistFiles: [],
+  activeCreaseFile: "",
+  activeWaistFile: "",
+
+  // Browser folder File objects map (if user used Browse Folder...)
+  browserCreaseMap: {},
+  browserWaistMap: {},
+
+  // Manual or browser blobs
   footBlob: null,
   footFilename: "",
   footRawUrl: null,
@@ -13,8 +33,7 @@ let state = {
   waistFilename: "",
   waistRawUrl: null,
   waistGradcamUrl: null,
-  presets: [],
-  activePresetId: null,
+
   historyCache: [],
 };
 
@@ -23,14 +42,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderDefaultComplianceMatrix();
   updateFieldingRadar();
   await checkBackendStatus();
-  await loadSamplePresets();
   await loadModelMetrics();
   await refreshHistoryLedger();
 
-  // Load the first preset automatically so the interface starts with a live example
-  if (state.presets.length > 0) {
-    await applySamplePreset(state.presets[0].id);
-  }
+  // Initialize folder watcher and evaluate the first detected pair in /crease and /waist
+  await syncWatchedFolder(true);
+  startFolderWatcherLoop();
 });
 
 function switchTab(tabId) {
@@ -61,76 +78,409 @@ async function checkBackendStatus() {
   }
 }
 
-async function loadSamplePresets() {
-  const grid = document.getElementById("samplePresetsGrid");
+/* ============================================================================
+   AUTOMATED FOLDER WATCHER (/crease & /waist SUBFOLDER INGESTION)
+   ============================================================================ */
+
+function startFolderWatcherLoop() {
+  if (state.watchIntervalId) clearInterval(state.watchIntervalId);
+  state.watchIntervalId = setInterval(async () => {
+    if (state.autoWatchEnabled && state.sourceMode === "server_folder") {
+      await syncWatchedFolder(false);
+    }
+  }, 1500);
+}
+
+function toggleAutoWatch() {
+  state.autoWatchEnabled = !state.autoWatchEnabled;
+  const btn = document.getElementById("btnToggleAutoWatch");
+  const text = document.getElementById("autoWatchText");
+  btn.classList.toggle("active", state.autoWatchEnabled);
+  text.textContent = state.autoWatchEnabled ? "AUTO-WATCH ACTIVE" : "AUTO-WATCH PAUSED";
+}
+
+async function applyWatchFolderPath() {
+  const input = document.getElementById("inputWatchFolderPath");
+  const folderPath = (input.value || "samples").trim();
+  if (!folderPath) return;
+
+  state.sourceMode = "server_folder";
+  updateQuickFolderChips(folderPath);
+
   try {
-    const res = await fetch(`${API_BASE}/api/samples`);
+    const res = await fetch(`${API_BASE}/api/folder/select`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder_path: folderPath }),
+    });
     const data = await res.json();
-    state.presets = data.samples || [];
-    grid.innerHTML = state.presets
-      .map(
-        (p) => `
-      <button type="button" class="preset-card" id="preset-${p.id}" onclick="applySamplePreset('${p.id}')">
-        <img class="preset-thumb" src="${API_BASE}/api/samples/${p.id}/image/foot" alt="${p.title}" />
-        <div class="preset-info">
-          <span class="preset-badge ${p.badge_type}">${p.badge}</span>
-          <div class="preset-title">${p.title}</div>
-          <div class="preset-sub">${p.subtitle}</div>
-        </div>
-      </button>
-    `
-      )
-      .join("");
-  } catch (e) {
-    grid.innerHTML = `<div class="muted-hint">Could not load presets from backend.</div>`;
+    applyServerFolderState(data, true);
+  } catch (err) {
+    console.error("Failed to connect watched folder:", err);
   }
 }
 
-async function applySamplePreset(sampleId) {
-  const preset = state.presets.find((p) => p.id === sampleId);
-  if (!preset) return;
+async function quickSelectFolder(folderName) {
+  const input = document.getElementById("inputWatchFolderPath");
+  input.value = folderName;
+  updateQuickFolderChips(folderName);
+  await applyWatchFolderPath();
+}
 
-  state.activePresetId = sampleId;
-  document.querySelectorAll(".preset-card").forEach((el) => {
-    el.classList.toggle("active", el.id === `preset-${sampleId}`);
+function updateQuickFolderChips(folderPath) {
+  const norm = folderPath.replace(/\\/g, "/").toLowerCase();
+  const chipSamples = document.getElementById("chipSamples");
+  const chipLive = document.getElementById("chipLiveFeed");
+  if (chipSamples) {
+    chipSamples.classList.toggle("active", norm.endsWith("samples") || norm === "samples/");
+  }
+  if (chipLive) {
+    chipLive.classList.toggle("active", norm.endsWith("live_feed") || norm === "live_feed/");
+  }
+}
+
+async function syncWatchedFolder(forceEvaluate = false) {
+  try {
+    const res = await fetch(`${API_BASE}/api/folder/status`);
+    const data = await res.json();
+    applyServerFolderState(data, forceEvaluate);
+  } catch (err) {
+    console.error("Error polling watched folder:", err);
+  }
+}
+
+function applyServerFolderState(data, forceEvaluate = false) {
+  if (!data) return;
+
+  const sigChanged = data.signature !== state.lastFolderSignature;
+  if (!sigChanged && !forceEvaluate) {
+    return;
+  }
+
+  state.lastFolderSignature = data.signature;
+  state.watchedFolderPath = data.folder_path;
+  state.creaseFiles = data.crease_files || [];
+  state.waistFiles = data.waist_files || [];
+
+  const pathInput = document.getElementById("inputWatchFolderPath");
+  if (pathInput && document.activeElement !== pathInput) {
+    pathInput.value = data.folder_path;
+    updateQuickFolderChips(data.folder_path);
+  }
+
+  document.getElementById("creaseFolderCount").textContent = `${data.crease_count || 0} images in /crease`;
+  document.getElementById("waistFolderCount").textContent = `${data.waist_count || 0} images in /waist`;
+
+  // Populate /crease selector (sorted newest-first by backend)
+  const creaseSelect = document.getElementById("selectCreaseQueue");
+  if (state.creaseFiles.length > 0) {
+    creaseSelect.innerHTML = state.creaseFiles
+      .map((f) => `<option value="${f.name}">${f.name}</option>`)
+      .join("");
+    state.activeCreaseFile = data.latest_crease || state.creaseFiles[0].name;
+    creaseSelect.value = state.activeCreaseFile;
+  } else {
+    creaseSelect.innerHTML = `<option value="">No images in /crease</option>`;
+    state.activeCreaseFile = "";
+  }
+
+  // Populate /waist selector (with optional "NONE" choice)
+  const waistSelect = document.getElementById("selectWaistQueue");
+  if (state.waistFiles.length > 0) {
+    waistSelect.innerHTML =
+      state.waistFiles.map((f) => `<option value="${f.name}">${f.name}</option>`).join("") +
+      `<option value="NONE">-- Disable Waist Feed --</option>`;
+    state.activeWaistFile = data.latest_waist || state.waistFiles[0].name;
+    waistSelect.value = state.activeWaistFile;
+  } else {
+    waistSelect.innerHTML = `<option value="NONE">No images in /waist</option>`;
+    state.activeWaistFile = "NONE";
+  }
+
+  // Automatically load preview images and run evaluation
+  loadSelectedSubfolderPreviewsAndEvaluate();
+}
+
+function handleBrowserDirectoryPick(event) {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+
+  const creaseMap = {};
+  const waistMap = {};
+  let rootFolderName = "Selected Folder";
+
+  files.forEach((file) => {
+    const rel = (file.webkitRelativePath || file.name).replace(/\\/g, "/");
+    const parts = rel.split("/");
+    if (parts.length > 1) {
+      rootFolderName = parts[0];
+    }
+    const lowerRel = rel.toLowerCase();
+    const isImage = /\.(jpg|jpeg|png|webp|bmp)$/i.test(file.name);
+    if (!isImage) return;
+
+    if (lowerRel.includes("/crease/")) {
+      creaseMap[file.name] = file;
+    } else if (lowerRel.includes("/waist/")) {
+      waistMap[file.name] = file;
+    }
   });
 
-  const ctx = preset.context;
-  selectFormat(ctx.match_format, false);
-  document.getElementById("inputOver").value = ctx.over;
-  document.getElementById("inputBallIndex").value = ctx.ball_index_in_innings;
-  document.getElementById("inputBowler").value = ctx.bowler_name || "Bowler";
-  document.getElementById("inputBatter").value = ctx.batter_name || "Batter";
-  document.getElementById("sliderOutsideCircle").value = ctx.fielders_outside_circle;
-  document.getElementById("sliderLegSide").value = ctx.fielders_leg_side;
-  document.getElementById("sliderBehindSquare").value = ctx.fielders_behind_square;
-  document.getElementById("sliderBouncersPrior").value = ctx.bouncers_in_over_before;
-  document.getElementById("chkCurrentBouncer").checked = Boolean(ctx.is_current_ball_bouncer);
-  document.getElementById("chkManualBeamer").checked = Boolean(ctx.is_beamer);
+  const creaseNames = Object.keys(creaseMap).sort();
+  const waistNames = Object.keys(waistMap).sort();
 
+  if (creaseNames.length === 0 && waistNames.length === 0) {
+    alert(
+      "No images found under '/crease' or '/waist' subfolders in the selected directory. Please choose a parent folder that contains 'crease' and 'waist' subfolders."
+    );
+    return;
+  }
+
+  state.sourceMode = "browser_folder";
+  state.browserCreaseMap = creaseMap;
+  state.browserWaistMap = waistMap;
+  state.creaseFiles = creaseNames.map((name) => ({ name }));
+  state.waistFiles = waistNames.map((name) => ({ name }));
+
+  document.getElementById("inputWatchFolderPath").value = rootFolderName;
+  document.getElementById("creaseFolderCount").textContent = `${creaseNames.length} images in /crease`;
+  document.getElementById("waistFolderCount").textContent = `${waistNames.length} images in /waist`;
+
+  const creaseSelect = document.getElementById("selectCreaseQueue");
+  creaseSelect.innerHTML = creaseNames.map((n) => `<option value="${n}">${n}</option>`).join("");
+  state.activeCreaseFile = creaseNames[0] || "";
+
+  const waistSelect = document.getElementById("selectWaistQueue");
+  waistSelect.innerHTML =
+    waistNames.map((n) => `<option value="${n}">${n}</option>`).join("") +
+    `<option value="NONE">-- Disable Waist Feed --</option>`;
+  state.activeWaistFile = waistNames[0] || "NONE";
+
+  loadSelectedSubfolderPreviewsAndEvaluate();
+}
+
+async function onSubfolderFileChange() {
+  const creaseSelect = document.getElementById("selectCreaseQueue");
+  const waistSelect = document.getElementById("selectWaistQueue");
+  state.activeCreaseFile = creaseSelect.value;
+  state.activeWaistFile = waistSelect.value;
+
+  if (state.sourceMode === "manual_file") {
+    state.sourceMode = "server_folder";
+  }
+
+  await loadSelectedSubfolderPreviewsAndEvaluate();
+}
+
+async function stepNextFolderPair() {
+  const creaseSelect = document.getElementById("selectCreaseQueue");
+  const waistSelect = document.getElementById("selectWaistQueue");
+
+  if (creaseSelect && creaseSelect.options.length > 0) {
+    creaseSelect.selectedIndex = (creaseSelect.selectedIndex + 1) % creaseSelect.options.length;
+    state.activeCreaseFile = creaseSelect.value;
+  }
+
+  if (waistSelect && waistSelect.options.length > 1) {
+    // Cycle among actual waist files (excluding the last "NONE" option)
+    const realCount = waistSelect.options.length - 1;
+    const nextIdx = (waistSelect.selectedIndex + 1) % realCount;
+    waistSelect.selectedIndex = nextIdx;
+    state.activeWaistFile = waistSelect.value;
+  }
+
+  // Also increment ball counter for realistic match progression
+  const ballEl = document.getElementById("inputBallIndex");
+  const overEl = document.getElementById("inputOver");
+  let nextBall = parseInt(ballEl.value || "1", 10) + 1;
+  ballEl.value = nextBall;
+  overEl.value = Math.floor((nextBall - 1) / 6);
   updateFieldingRadar();
 
-  try {
-    const footUrl = `${API_BASE}/api/samples/${sampleId}/image/foot`;
-    const footRes = await fetch(footUrl);
-    state.footBlob = await footRes.blob();
-    state.footFilename = preset.foot_file;
-    state.footRawUrl = URL.createObjectURL(state.footBlob);
-    document.getElementById("footFileName").textContent = `${preset.foot_file}`;
+  await loadSelectedSubfolderPreviewsAndEvaluate();
+}
 
-    const waistUrl = `${API_BASE}/api/samples/${sampleId}/image/waist`;
-    const waistRes = await fetch(waistUrl);
-    state.waistBlob = await waistRes.blob();
-    state.waistFilename = preset.waist_file;
-    state.waistRawUrl = URL.createObjectURL(state.waistBlob);
-    document.getElementById("waistFileName").textContent = `${preset.waist_file}`;
-
-    refreshCameraImages();
-    await runDeliveryEvaluation();
-  } catch (err) {
-    console.error("Failed loading preset images:", err);
+function toggleAutoCycleQueue() {
+  state.autoCycleEnabled = !state.autoCycleEnabled;
+  const btn = document.getElementById("btnAutoCycle");
+  if (state.autoCycleEnabled) {
+    btn.textContent = "Stop Auto-Play Queue";
+    btn.style.borderColor = "#10b981";
+    btn.style.color = "#34d399";
+    state.autoCycleIntervalId = setInterval(() => {
+      stepNextFolderPair();
+    }, 3500);
+  } else {
+    btn.textContent = "Auto-Play Folder Queue";
+    btn.style.borderColor = "";
+    btn.style.color = "";
+    if (state.autoCycleIntervalId) {
+      clearInterval(state.autoCycleIntervalId);
+      state.autoCycleIntervalId = null;
+    }
   }
 }
+
+async function loadSelectedSubfolderPreviewsAndEvaluate() {
+  if (state.sourceMode === "browser_folder") {
+    const cFile = state.browserCreaseMap[state.activeCreaseFile];
+    if (cFile) {
+      state.footBlob = cFile;
+      state.footFilename = cFile.name;
+      state.footRawUrl = URL.createObjectURL(cFile);
+      state.footGradcamUrl = null;
+      document.getElementById("footFileName").textContent = `crease/${cFile.name}`;
+    }
+
+    const wFile =
+      state.activeWaistFile && state.activeWaistFile !== "NONE"
+        ? state.browserWaistMap[state.activeWaistFile]
+        : null;
+    if (wFile) {
+      state.waistBlob = wFile;
+      state.waistFilename = wFile.name;
+      state.waistRawUrl = URL.createObjectURL(wFile);
+      state.waistGradcamUrl = null;
+      document.getElementById("waistFileName").textContent = `waist/${wFile.name}`;
+    } else {
+      clearWaistImageStateOnly();
+    }
+
+    refreshCameraImages();
+    await runMultipartEvaluation();
+    return;
+  }
+
+  // Server folder mode: load directly from /api/folder/image/{sub}
+  if (state.activeCreaseFile) {
+    const ts = Date.now();
+    state.footRawUrl = `${API_BASE}/api/folder/image/crease?file=${encodeURIComponent(
+      state.activeCreaseFile
+    )}&t=${ts}`;
+    state.footFilename = state.activeCreaseFile;
+    state.footGradcamUrl = null;
+    document.getElementById("footFileName").textContent = `crease/${state.activeCreaseFile}`;
+  } else {
+    state.footRawUrl = null;
+    document.getElementById("footFileName").textContent = "No image in /crease";
+  }
+
+  if (state.activeWaistFile && state.activeWaistFile !== "NONE") {
+    const ts = Date.now();
+    state.waistRawUrl = `${API_BASE}/api/folder/image/waist?file=${encodeURIComponent(
+      state.activeWaistFile
+    )}&t=${ts}`;
+    state.waistFilename = state.activeWaistFile;
+    state.waistGradcamUrl = null;
+    document.getElementById("waistFileName").textContent = `waist/${state.activeWaistFile}`;
+  } else {
+    clearWaistImageStateOnly();
+  }
+
+  refreshCameraImages();
+  await runServerFolderEvaluation();
+}
+
+async function triggerCurrentEvaluation() {
+  if (state.sourceMode === "server_folder") {
+    await runServerFolderEvaluation();
+  } else {
+    await runMultipartEvaluation();
+  }
+}
+
+async function runServerFolderEvaluation() {
+  if (!state.activeCreaseFile) return;
+
+  const btn = document.getElementById("btnEvaluateDelivery");
+  btn.disabled = true;
+  btn.innerHTML = `<span>Analyzing Subfolders...</span>`;
+
+  const formData = new FormData();
+  formData.append("crease_file", state.activeCreaseFile);
+  formData.append("waist_file", state.activeWaistFile || "NONE");
+  appendMatchContextToForm(formData);
+
+  try {
+    const res = await fetch(`${API_BASE}/api/folder/evaluate`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const result = await res.json();
+    renderDeliveryVerdict(result);
+    await refreshHistoryLedger();
+  } catch (err) {
+    console.error("Folder evaluation error:", err);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<span>Evaluate Delivery</span>`;
+  }
+}
+
+async function runMultipartEvaluation() {
+  if (!state.footBlob) {
+    return;
+  }
+
+  const btn = document.getElementById("btnEvaluateDelivery");
+  btn.disabled = true;
+  btn.innerHTML = `<span>Analyzing Frame...</span>`;
+
+  const formData = new FormData();
+  formData.append("foot_image", state.footBlob, state.footFilename || "foot.jpg");
+  if (state.waistBlob) {
+    formData.append("waist_image", state.waistBlob, state.waistFilename || "waist.jpg");
+  }
+  appendMatchContextToForm(formData);
+
+  try {
+    const res = await fetch(`${API_BASE}/check-delivery`, {
+      method: "POST",
+      body: formData,
+    });
+    const result = await res.json();
+    renderDeliveryVerdict(result);
+    await refreshHistoryLedger();
+  } catch (err) {
+    console.error("Multipart evaluation error:", err);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<span>Evaluate Delivery</span>`;
+  }
+}
+
+function appendMatchContextToForm(formData) {
+  formData.append("match_format", state.activeFormat);
+  formData.append("over", document.getElementById("inputOver").value || "0");
+  formData.append("ball_index_in_innings", document.getElementById("inputBallIndex").value || "1");
+  formData.append(
+    "bouncers_in_over_before",
+    document.getElementById("sliderBouncersPrior").value || "0"
+  );
+  formData.append(
+    "is_current_ball_bouncer",
+    document.getElementById("chkCurrentBouncer").checked
+  );
+  formData.append("is_beamer", document.getElementById("chkManualBeamer").checked);
+  formData.append("fielders_leg_side", document.getElementById("sliderLegSide").value || "0");
+  formData.append(
+    "fielders_behind_square",
+    document.getElementById("sliderBehindSquare").value || "0"
+  );
+  formData.append(
+    "fielders_outside_circle",
+    document.getElementById("sliderOutsideCircle").value || "0"
+  );
+  formData.append("bowler_name", document.getElementById("inputBowler").value || "Bowler");
+  formData.append("batter_name", document.getElementById("inputBatter").value || "Batter");
+}
+
+/* ============================================================================
+   MANUAL FILE OVERRIDE & DRAG-AND-DROP
+   ============================================================================ */
 
 function setupDragAndDrop() {
   [
@@ -162,9 +512,20 @@ function handleFileSelect(event, type) {
   }
 }
 
-function loadUserFile(file, type) {
-  // Deselect preset cards when user uploads their own custom file
-  document.querySelectorAll(".preset-card").forEach((el) => el.classList.remove("active"));
+async function loadUserFile(file, type) {
+  // If we were in server_folder mode and the user overrides one camera manually,
+  // ensure the other camera has a valid Blob if needed
+  if (state.sourceMode === "server_folder") {
+    if (type === "waist" && !state.footBlob && state.footRawUrl) {
+      const r = await fetch(state.footRawUrl);
+      state.footBlob = await r.blob();
+    } else if (type === "foot" && !state.waistBlob && state.waistRawUrl) {
+      const r = await fetch(state.waistRawUrl);
+      state.waistBlob = await r.blob();
+    }
+  }
+
+  state.sourceMode = "manual_file";
 
   if (type === "foot") {
     state.footBlob = file;
@@ -180,18 +541,28 @@ function loadUserFile(file, type) {
     document.getElementById("waistFileName").textContent = file.name;
   }
   refreshCameraImages();
-  runDeliveryEvaluation();
+  await runMultipartEvaluation();
 }
 
-function clearWaistImage() {
+function clearWaistImageStateOnly() {
   state.waistBlob = null;
   state.waistFilename = "";
   state.waistRawUrl = null;
   state.waistGradcamUrl = null;
-  document.getElementById("waistFileName").textContent = "Optional camera feed";
+  document.getElementById("waistFileName").textContent = "Waist feed disabled";
   document.getElementById("beamerProbText").textContent = "N/A";
   document.getElementById("beamerProbBar").style.width = "0%";
+}
+
+function clearWaistImage() {
+  clearWaistImageStateOnly();
+  const waistSelect = document.getElementById("selectWaistQueue");
+  if (waistSelect) {
+    waistSelect.value = "NONE";
+    state.activeWaistFile = "NONE";
+  }
   refreshCameraImages();
+  triggerCurrentEvaluation();
 }
 
 function setCameraViewMode(mode) {
@@ -233,14 +604,18 @@ function refreshCameraImages() {
   }
 }
 
+/* ============================================================================
+   ICC / MCC RULE ENGINE & INTERACTIVE PITCH FIELDING RADAR
+   ============================================================================ */
+
 function selectFormat(fmt, triggerEval = true) {
   state.activeFormat = fmt;
   document.querySelectorAll(".fmt-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.fmt === fmt);
   });
   updateFieldingRadar();
-  if (triggerEval && state.footBlob) {
-    runDeliveryEvaluation();
+  if (triggerEval) {
+    triggerCurrentEvaluation();
   }
 }
 
@@ -396,72 +771,9 @@ function updateFieldingRadar() {
     .join("");
 }
 
-function advanceNextBall() {
-  const ballEl = document.getElementById("inputBallIndex");
-  const overEl = document.getElementById("inputOver");
-  let nextBall = parseInt(ballEl.value || "1", 10) + 1;
-  ballEl.value = nextBall;
-  overEl.value = Math.floor((nextBall - 1) / 6);
-  updateFieldingRadar();
-  if (state.footBlob) {
-    runDeliveryEvaluation();
-  }
-}
-
-async function runDeliveryEvaluation() {
-  if (!state.footBlob) {
-    alert("Please select a preset or upload a crease camera frame first.");
-    return;
-  }
-
-  const btn = document.getElementById("btnEvaluateDelivery");
-  btn.disabled = true;
-  btn.innerHTML = `<span>Analyzing Frame...</span>`;
-
-  const formData = new FormData();
-  formData.append("foot_image", state.footBlob, state.footFilename || "foot.jpg");
-  if (state.waistBlob) {
-    formData.append("waist_image", state.waistBlob, state.waistFilename || "waist.jpg");
-  }
-  formData.append("match_format", state.activeFormat);
-  formData.append("over", document.getElementById("inputOver").value || "0");
-  formData.append("ball_index_in_innings", document.getElementById("inputBallIndex").value || "1");
-  formData.append(
-    "bouncers_in_over_before",
-    document.getElementById("sliderBouncersPrior").value || "0"
-  );
-  formData.append(
-    "is_current_ball_bouncer",
-    document.getElementById("chkCurrentBouncer").checked
-  );
-  formData.append("is_beamer", document.getElementById("chkManualBeamer").checked);
-  formData.append("fielders_leg_side", document.getElementById("sliderLegSide").value || "0");
-  formData.append(
-    "fielders_behind_square",
-    document.getElementById("sliderBehindSquare").value || "0"
-  );
-  formData.append(
-    "fielders_outside_circle",
-    document.getElementById("sliderOutsideCircle").value || "0"
-  );
-  formData.append("bowler_name", document.getElementById("inputBowler").value || "Bowler");
-  formData.append("batter_name", document.getElementById("inputBatter").value || "Batter");
-
-  try {
-    const res = await fetch(`${API_BASE}/check-delivery`, {
-      method: "POST",
-      body: formData,
-    });
-    const result = await res.json();
-    renderDeliveryVerdict(result);
-    await refreshHistoryLedger();
-  } catch (err) {
-    console.error("Evaluation error:", err);
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = `<span>Evaluate Delivery</span>`;
-  }
-}
+/* ============================================================================
+   VERDICT RENDERING & TELEMETRY LEDGER
+   ============================================================================ */
 
 function renderDeliveryVerdict(res) {
   if (res.telemetry) {
@@ -482,6 +794,9 @@ function renderDeliveryVerdict(res) {
     document.getElementById("beamerProbText").textContent = `${beamerPct}%`;
     waistBar.style.width = `${Math.min(100, beamerPct)}%`;
     waistBar.style.backgroundColor = beamerPct > 50 ? "#f43f5e" : "#10b981";
+  } else {
+    document.getElementById("beamerProbText").textContent = "N/A";
+    waistBar.style.width = "0%";
   }
 
   const banner = document.getElementById("verdictBanner");
@@ -492,8 +807,10 @@ function renderDeliveryVerdict(res) {
   banner.className = `verdict-banner ${res.is_no_ball ? "noball" : "legal"}`;
   title.textContent = res.is_no_ball ? "NO-BALL SIGNALLED" : "LEGAL DELIVERY";
   sub.textContent = res.is_no_ball
-    ? `${res.reasons.length} law infringement(s) detected by vision and rule engine.`
-    : "All optical computer vision checks and ICC/MCC playing conditions satisfied.";
+    ? `${res.reasons.length} law infringement(s) detected across ${res.foot_file || "crease"}${
+        res.waist_file ? " & " + res.waist_file : ""
+      }.`
+    : `All optical computer vision checks and ICC/MCC playing conditions satisfied (${res.foot_file || "crease"}).`;
 
   freeHit.classList.toggle("hidden", !res.free_hit_awarded);
   document.getElementById("metaDeliveryId").textContent = `#${res.delivery_id || "LIVE"}`;
@@ -626,6 +943,8 @@ function exportMatchHistoryCsv() {
     "over_ball",
     "bowler_name",
     "batter_name",
+    "foot_file",
+    "waist_file",
     "verdict",
     "ai_overstep_probability",
     "ai_beamer_probability",

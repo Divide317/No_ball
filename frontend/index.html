@@ -62,21 +62,87 @@
   <main class="main-container">
     <!-- TAB 1: UMPIRE DECISION CONSOLE -->
     <section id="tab-studio" class="tab-section active">
-      <!-- Real Broadcast Presets Bar -->
-      <div class="presets-panel glass-card">
-        <div class="presets-header">
+      <!-- Automated Folder Watch & Subfolder Ingestion Panel -->
+      <div class="folder-watch-panel glass-card">
+        <div class="folder-watch-top">
           <div>
-            <span class="eyebrow">BROADCAST REPLAY LIBRARY</span>
-            <h3>Verified Match Scenarios <span class="muted-hint">(Select a preset or upload custom frames below)</span></h3>
+            <span class="eyebrow">AUTOMATED DIRECTORY WATCHER // SUBFOLDER INGESTION</span>
+            <h3>Target Folder Destination <span class="muted-hint">(Automatically monitors <code>/crease</code> and <code>/waist</code> subfolders for new frames)</span></h3>
           </div>
-          <div class="presets-actions">
-            <button class="btn-secondary-sm" onclick="advanceNextBall()">
-              Advance Next Ball
+          <div class="watch-controls-right">
+            <button type="button" class="watch-pill active" id="btnToggleAutoWatch" onclick="toggleAutoWatch()">
+              <span class="pulse-dot" id="autoWatchDot"></span>
+              <span id="autoWatchText">AUTO-WATCH ACTIVE</span>
+            </button>
+            <button type="button" class="btn-secondary-sm" id="btnAutoCycle" onclick="toggleAutoCycleQueue()">
+              Auto-Play Folder Queue
+            </button>
+            <button type="button" class="btn-secondary-sm" onclick="stepNextFolderPair()">
+              Next Frame Pair in Folder
             </button>
           </div>
         </div>
-        <div class="presets-grid" id="samplePresetsGrid">
-          <!-- Populated dynamically from /api/samples -->
+
+        <!-- Folder Path Bar -->
+        <div class="folder-path-bar">
+          <div class="folder-input-wrap">
+            <span class="folder-prefix">FOLDER PATH</span>
+            <input
+              type="text"
+              id="inputWatchFolderPath"
+              value="samples"
+              placeholder="Enter folder path containing /crease and /waist subfolders..."
+              onkeydown="if(event.key==='Enter') applyWatchFolderPath()"
+            />
+          </div>
+          <button type="button" class="btn-connect-folder" onclick="applyWatchFolderPath()">
+            Connect Folder
+          </button>
+          <button type="button" class="btn-secondary-sm" onclick="document.getElementById('dirPickerInput').click()">
+            Browse Folder...
+          </button>
+          <input
+            type="file"
+            id="dirPickerInput"
+            webkitdirectory
+            directory
+            multiple
+            class="hidden"
+            onchange="handleBrowserDirectoryPick(event)"
+          />
+          <div class="quick-folder-group">
+            <button type="button" class="btn-chip active" id="chipSamples" onclick="quickSelectFolder('samples')">
+              samples/
+            </button>
+            <button type="button" class="btn-chip" id="chipLiveFeed" onclick="quickSelectFolder('live_feed')">
+              live_feed/
+            </button>
+          </div>
+        </div>
+
+        <!-- Subfolder Status & File Queue Selectors -->
+        <div class="subfolders-grid">
+          <div class="subfolder-card">
+            <div class="subfolder-header">
+              <span class="subfolder-title">SUBFOLDER 01 // <code>/crease</code></span>
+              <span class="subfolder-count" id="creaseFolderCount">0 images detected</span>
+            </div>
+            <div class="subfolder-select-row">
+              <label for="selectCreaseQueue">Active Crease Frame:</label>
+              <select id="selectCreaseQueue" onchange="onSubfolderFileChange()"></select>
+            </div>
+          </div>
+
+          <div class="subfolder-card">
+            <div class="subfolder-header">
+              <span class="subfolder-title">SUBFOLDER 02 // <code>/waist</code></span>
+              <span class="subfolder-count" id="waistFolderCount">0 images detected</span>
+            </div>
+            <div class="subfolder-select-row">
+              <label for="selectWaistQueue">Active Waist Frame:</label>
+              <select id="selectWaistQueue" onchange="onSubfolderFileChange()"></select>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -116,8 +182,8 @@
                         <circle cx="12" cy="13" r="4"/>
                       </svg>
                     </div>
-                    <p class="upload-title">Select or Drop Crease Frame</p>
-                    <p class="upload-sub">Side-on stump camera frame at front-foot impact</p>
+                    <p class="upload-title">Waiting for <code>/crease</code> Subfolder</p>
+                    <p class="upload-sub">Automatically loads from watched folder or click to override</p>
                   </div>
                 </div>
                 <input type="file" id="footFileInput" accept="image/*" class="hidden" onchange="handleFileSelect(event, 'foot')" />
@@ -132,7 +198,7 @@
                   </div>
                   <div class="cam-file-row">
                     <span class="file-label" id="footFileName">No frame loaded</span>
-                    <button class="btn-link" onclick="document.getElementById('footFileInput').click()">Upload Image</button>
+                    <button class="btn-link" onclick="document.getElementById('footFileInput').click()">Manual File</button>
                   </div>
                 </div>
               </div>
@@ -155,8 +221,8 @@
                         <line x1="12" y1="22" x2="12" y2="18"/>
                       </svg>
                     </div>
-                    <p class="upload-title">Select or Drop Waist Frame</p>
-                    <p class="upload-sub">Side-on batter profile for full-toss height check</p>
+                    <p class="upload-title">Waiting for <code>/waist</code> Subfolder</p>
+                    <p class="upload-sub">Automatically loads from watched folder or click to override</p>
                   </div>
                 </div>
                 <input type="file" id="waistFileInput" accept="image/*" class="hidden" onchange="handleFileSelect(event, 'waist')" />
@@ -171,7 +237,7 @@
                   </div>
                   <div class="cam-file-row">
                     <span class="file-label" id="waistFileName">Optional camera feed</span>
-                    <button class="btn-link" onclick="clearWaistImage()">Clear</button>
+                    <button class="btn-link" onclick="clearWaistImage()">Disable Waist Cam</button>
                   </div>
                 </div>
               </div>
@@ -184,7 +250,7 @@
               <div class="verdict-left">
                 <span class="verdict-eyebrow" id="verdictEyebrow">THIRD-UMPIRE ADJUDICATION</span>
                 <h1 class="verdict-title" id="verdictTitle">AWAITING DELIVERY</h1>
-                <p class="verdict-sub" id="verdictSub">Select a preset above or upload a crease image to calculate live probabilities.</p>
+                <p class="verdict-sub" id="verdictSub">Select a folder destination above to automatically ingest and evaluate frames.</p>
               </div>
               <div class="verdict-right">
                 <div class="free-hit-pill hidden" id="freeHitPill">FREE HIT AWARDED</div>
@@ -228,7 +294,7 @@
                 <span class="eyebrow">DETERMINISTIC RULE ENGINE</span>
                 <h2>Match Context &amp; Field Radar</h2>
               </div>
-              <button class="btn-primary-run" id="btnEvaluateDelivery" onclick="runDeliveryEvaluation()">
+              <button class="btn-primary-run" id="btnEvaluateDelivery" onclick="triggerCurrentEvaluation()">
                 <span>Evaluate Delivery</span>
               </button>
             </div>
@@ -436,7 +502,7 @@
         </div>
       </div>
 
-      <!-- Online Dataset Provenance Banner -->
+      <!-- Dataset Provenance Banner -->
       <div class="glass-card provenance-card">
         <div class="provenance-grid">
           <div>
@@ -533,14 +599,14 @@
             <span class="eyebrow">REST API SPECIFICATION</span>
             <h3>Direct Backend Integration</h3>
             <p class="provenance-desc">
-              External broadcast systems, scoring applications, and camera pipelines can submit frames directly to the
-              FastAPI backend via a multipart <code>POST /check-delivery</code> request.
+              External broadcast systems, scoring applications, and camera pipelines can point the directory watcher at a
+              shared camera dump folder or submit frames directly via <code>POST /check-delivery</code>.
             </p>
             <div class="endpoint-badges">
-              <div class="ep-item"><span class="method post">POST</span> <code>/check-delivery</code> &mdash; Dual-CV and ICC Rule Adjudication</div>
+              <div class="ep-item"><span class="method post">POST</span> <code>/api/folder/select</code> &mdash; Set Target Folder Destination (<code>/crease</code> &amp; <code>/waist</code>)</div>
+              <div class="ep-item"><span class="method post">POST</span> <code>/api/folder/evaluate</code> &mdash; Auto-Evaluate Latest Subfolder Frames</div>
+              <div class="ep-item"><span class="method post">POST</span> <code>/check-delivery</code> &mdash; Direct Multipart Frame Adjudication</div>
               <div class="ep-item"><span class="method get">GET</span> <code>/api/metrics</code> &mdash; Model Validation Metrics and Confusion Matrix</div>
-              <div class="ep-item"><span class="method get">GET</span> <code>/api/samples</code> &mdash; Verified Broadcast Replay Presets</div>
-              <div class="ep-item"><span class="method get">GET</span> <code>/api/history</code> &mdash; Live Session Telemetry Ledger</div>
             </div>
           </div>
           <div class="code-snippet-box">
@@ -550,11 +616,7 @@
             </div>
             <pre id="apiCodeSnippet"><code>import requests
 
-url = "http://127.0.0.1:8000/check-delivery"
-files = {
-    "foot_image": open("samples/1_front_foot_noball_clear.jpg", "rb"),
-    "waist_image": open("samples/8_waist_legal_height_ball.jpg", "rb"),
-}
+url = "http://127.0.0.1:8000/api/folder/evaluate"
 payload = {
     "match_format": "IPL",
     "over": 18,
@@ -565,7 +627,7 @@ payload = {
     "fielders_behind_square": 1,
     "fielders_outside_circle": 5,
 }
-res = requests.post(url, files=files, data=payload).json()
+res = requests.post(url, data=payload).json()
 print(res["verdict"], res["ai_overstep_probability"], res["reasons"])</code></pre>
           </div>
         </div>
