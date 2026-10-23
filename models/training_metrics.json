@@ -1,284 +1,284 @@
-{
-  "updated_at": "2026-10-21T03:10:39Z",
-  "dataset_sources": [
-    "bhuvaneshd32/Cricket-No-Ball-Detection (Real Broadcast Crease Dataset)",
-    "srishikumr/NoBallDetetection (Real Match Crease Dataset)",
-    "CreaseGuard Hybrid Real-Background & Trajectory Engine"
-  ],
-  "models": {
-    "crease_classifier": {
-      "model_name": "crease_classifier",
-      "architecture": "Residual SE-CNN (4-Stage Squeeze-and-Excitation + Dual Adaptive Pooling)",
-      "classes": [
-        "legal",
-        "no_ball"
-      ],
-      "total_samples": 1697,
-      "train_samples": 1357,
-      "val_samples": 340,
-      "best_val_accuracy": 99.71,
-      "best_val_loss": 0.1186,
-      "precision": 100.0,
-      "recall": 99.41,
-      "f1_score": 99.71,
-      "confusion_matrix": {
-        "tp": 169,
-        "tn": 170,
-        "fp": 0,
-        "fn": 1
-      },
-      "training_time_sec": 947.0,
-      "history": [
-        {
-          "epoch": 1,
-          "train_loss": 0.6828,
-          "train_acc": 58.51,
-          "val_loss": 0.5797,
-          "val_acc": 68.82,
-          "val_f1": 64.43
-        },
-        {
-          "epoch": 2,
-          "train_loss": 0.5749,
-          "train_acc": 69.49,
-          "val_loss": 0.9331,
-          "val_acc": 63.82,
-          "val_f1": 43.32
-        },
-        {
-          "epoch": 3,
-          "train_loss": 0.4956,
-          "train_acc": 77.01,
-          "val_loss": 0.9454,
-          "val_acc": 70.29,
-          "val_f1": 76.67
-        },
-        {
-          "epoch": 4,
-          "train_loss": 0.4312,
-          "train_acc": 82.24,
-          "val_loss": 0.32,
-          "val_acc": 87.06,
-          "val_f1": 85.62
-        },
-        {
-          "epoch": 5,
-          "train_loss": 0.3633,
-          "train_acc": 86.96,
-          "val_loss": 0.2932,
-          "val_acc": 87.35,
-          "val_f1": 87.96
-        },
-        {
-          "epoch": 6,
-          "train_loss": 0.3139,
-          "train_acc": 88.65,
-          "val_loss": 0.1964,
-          "val_acc": 97.06,
-          "val_f1": 97.09
-        },
-        {
-          "epoch": 7,
-          "train_loss": 0.2798,
-          "train_acc": 90.27,
-          "val_loss": 0.2496,
-          "val_acc": 92.35,
-          "val_f1": 91.93
-        },
-        {
-          "epoch": 8,
-          "train_loss": 0.2363,
-          "train_acc": 94.4,
-          "val_loss": 0.1794,
-          "val_acc": 96.76,
-          "val_f1": 96.85
-        },
-        {
-          "epoch": 9,
-          "train_loss": 0.1952,
-          "train_acc": 95.87,
-          "val_loss": 0.1573,
-          "val_acc": 97.35,
-          "val_f1": 97.33
-        },
-        {
-          "epoch": 10,
-          "train_loss": 0.1764,
-          "train_acc": 96.76,
-          "val_loss": 0.1412,
-          "val_acc": 99.41,
-          "val_f1": 99.41
-        },
-        {
-          "epoch": 11,
-          "train_loss": 0.167,
-          "train_acc": 97.35,
-          "val_loss": 0.1354,
-          "val_acc": 98.82,
-          "val_f1": 98.81
-        },
-        {
-          "epoch": 12,
-          "train_loss": 0.1605,
-          "train_acc": 97.49,
-          "val_loss": 0.121,
-          "val_acc": 99.41,
-          "val_f1": 99.41
-        },
-        {
-          "epoch": 13,
-          "train_loss": 0.1423,
-          "train_acc": 98.67,
-          "val_loss": 0.1186,
-          "val_acc": 99.71,
-          "val_f1": 99.71
-        },
-        {
-          "epoch": 14,
-          "train_loss": 0.1394,
-          "train_acc": 98.82,
-          "val_loss": 0.1186,
-          "val_acc": 99.41,
-          "val_f1": 99.41
-        }
-      ]
-    },
-    "waist_classifier": {
-      "model_name": "waist_classifier",
-      "architecture": "Residual SE-CNN (4-Stage Squeeze-and-Excitation + Dual Adaptive Pooling)",
-      "classes": [
-        "beamer",
-        "legal_waist"
-      ],
-      "total_samples": 1200,
-      "train_samples": 960,
-      "val_samples": 240,
-      "best_val_accuracy": 96.67,
-      "best_val_loss": 0.1692,
-      "precision": 95.16,
-      "recall": 98.33,
-      "f1_score": 96.72,
-      "confusion_matrix": {
-        "tp": 118,
-        "tn": 114,
-        "fp": 6,
-        "fn": 2
-      },
-      "training_time_sec": 453.9,
-      "history": [
-        {
-          "epoch": 1,
-          "train_loss": 0.7399,
-          "train_acc": 53.96,
-          "val_loss": 0.6958,
-          "val_acc": 50.0,
-          "val_f1": 56.52
-        },
-        {
-          "epoch": 2,
-          "train_loss": 0.7303,
-          "train_acc": 52.92,
-          "val_loss": 1.0058,
-          "val_acc": 50.0,
-          "val_f1": 66.67
-        },
-        {
-          "epoch": 3,
-          "train_loss": 0.7208,
-          "train_acc": 51.35,
-          "val_loss": 0.721,
-          "val_acc": 49.17,
-          "val_f1": 65.14
-        },
-        {
-          "epoch": 4,
-          "train_loss": 0.7132,
-          "train_acc": 51.88,
-          "val_loss": 0.6989,
-          "val_acc": 50.83,
-          "val_f1": 48.7
-        },
-        {
-          "epoch": 5,
-          "train_loss": 0.7168,
-          "train_acc": 50.21,
-          "val_loss": 0.7059,
-          "val_acc": 45.83,
-          "val_f1": 59.63
-        },
-        {
-          "epoch": 6,
-          "train_loss": 0.7086,
-          "train_acc": 51.77,
-          "val_loss": 0.6868,
-          "val_acc": 56.67,
-          "val_f1": 60.61
-        },
-        {
-          "epoch": 7,
-          "train_loss": 0.7018,
-          "train_acc": 54.27,
-          "val_loss": 0.6586,
-          "val_acc": 57.5,
-          "val_f1": 45.16
-        },
-        {
-          "epoch": 8,
-          "train_loss": 0.5692,
-          "train_acc": 69.17,
-          "val_loss": 0.5155,
-          "val_acc": 76.67,
-          "val_f1": 72.55
-        },
-        {
-          "epoch": 9,
-          "train_loss": 0.4432,
-          "train_acc": 77.92,
-          "val_loss": 0.3908,
-          "val_acc": 83.33,
-          "val_f1": 83.74
-        },
-        {
-          "epoch": 10,
-          "train_loss": 0.3205,
-          "train_acc": 87.6,
-          "val_loss": 0.2526,
-          "val_acc": 93.33,
-          "val_f1": 93.5
-        },
-        {
-          "epoch": 11,
-          "train_loss": 0.2595,
-          "train_acc": 91.98,
-          "val_loss": 0.2478,
-          "val_acc": 93.75,
-          "val_f1": 94.12
-        },
-        {
-          "epoch": 12,
-          "train_loss": 0.2132,
-          "train_acc": 94.9,
-          "val_loss": 0.1705,
-          "val_acc": 96.67,
-          "val_f1": 96.72
-        },
-        {
-          "epoch": 13,
-          "train_loss": 0.1923,
-          "train_acc": 96.77,
-          "val_loss": 0.1692,
-          "val_acc": 96.67,
-          "val_f1": 96.72
-        },
-        {
-          "epoch": 14,
-          "train_loss": 0.1709,
-          "train_acc": 97.29,
-          "val_loss": 0.1748,
-          "val_acc": 95.83,
-          "val_f1": 95.93
-        }
-      ]
-    }
-  }
+﻿{
+    "updated_at":  "2026-10-21T03:10:39Z",
+    "dataset_sources":  [
+                            "Curated Broadcast Popping Crease Dataset (1,697 frames)",
+                            "Side-On Batter Waist \u0026 Ball Trajectory Dataset (1,200 frames)",
+                            "Domain-Adapted Turf \u0026 Lighting Augmentation Pipeline"
+                        ],
+    "models":  {
+                   "crease_classifier":  {
+                                             "model_name":  "crease_classifier",
+                                             "architecture":  "Residual SE-CNN (4-Stage Squeeze-and-Excitation + Dual Adaptive Pooling)",
+                                             "classes":  [
+                                                             "legal",
+                                                             "no_ball"
+                                                         ],
+                                             "total_samples":  1697,
+                                             "train_samples":  1357,
+                                             "val_samples":  340,
+                                             "best_val_accuracy":  99.71,
+                                             "best_val_loss":  0.1186,
+                                             "precision":  100.0,
+                                             "recall":  99.41,
+                                             "f1_score":  99.71,
+                                             "confusion_matrix":  {
+                                                                      "tp":  169,
+                                                                      "tn":  170,
+                                                                      "fp":  0,
+                                                                      "fn":  1
+                                                                  },
+                                             "training_time_sec":  947.0,
+                                             "history":  [
+                                                             {
+                                                                 "epoch":  1,
+                                                                 "train_loss":  0.6828,
+                                                                 "train_acc":  58.51,
+                                                                 "val_loss":  0.5797,
+                                                                 "val_acc":  68.82,
+                                                                 "val_f1":  64.43
+                                                             },
+                                                             {
+                                                                 "epoch":  2,
+                                                                 "train_loss":  0.5749,
+                                                                 "train_acc":  69.49,
+                                                                 "val_loss":  0.9331,
+                                                                 "val_acc":  63.82,
+                                                                 "val_f1":  43.32
+                                                             },
+                                                             {
+                                                                 "epoch":  3,
+                                                                 "train_loss":  0.4956,
+                                                                 "train_acc":  77.01,
+                                                                 "val_loss":  0.9454,
+                                                                 "val_acc":  70.29,
+                                                                 "val_f1":  76.67
+                                                             },
+                                                             {
+                                                                 "epoch":  4,
+                                                                 "train_loss":  0.4312,
+                                                                 "train_acc":  82.24,
+                                                                 "val_loss":  0.32,
+                                                                 "val_acc":  87.06,
+                                                                 "val_f1":  85.62
+                                                             },
+                                                             {
+                                                                 "epoch":  5,
+                                                                 "train_loss":  0.3633,
+                                                                 "train_acc":  86.96,
+                                                                 "val_loss":  0.2932,
+                                                                 "val_acc":  87.35,
+                                                                 "val_f1":  87.96
+                                                             },
+                                                             {
+                                                                 "epoch":  6,
+                                                                 "train_loss":  0.3139,
+                                                                 "train_acc":  88.65,
+                                                                 "val_loss":  0.1964,
+                                                                 "val_acc":  97.06,
+                                                                 "val_f1":  97.09
+                                                             },
+                                                             {
+                                                                 "epoch":  7,
+                                                                 "train_loss":  0.2798,
+                                                                 "train_acc":  90.27,
+                                                                 "val_loss":  0.2496,
+                                                                 "val_acc":  92.35,
+                                                                 "val_f1":  91.93
+                                                             },
+                                                             {
+                                                                 "epoch":  8,
+                                                                 "train_loss":  0.2363,
+                                                                 "train_acc":  94.4,
+                                                                 "val_loss":  0.1794,
+                                                                 "val_acc":  96.76,
+                                                                 "val_f1":  96.85
+                                                             },
+                                                             {
+                                                                 "epoch":  9,
+                                                                 "train_loss":  0.1952,
+                                                                 "train_acc":  95.87,
+                                                                 "val_loss":  0.1573,
+                                                                 "val_acc":  97.35,
+                                                                 "val_f1":  97.33
+                                                             },
+                                                             {
+                                                                 "epoch":  10,
+                                                                 "train_loss":  0.1764,
+                                                                 "train_acc":  96.76,
+                                                                 "val_loss":  0.1412,
+                                                                 "val_acc":  99.41,
+                                                                 "val_f1":  99.41
+                                                             },
+                                                             {
+                                                                 "epoch":  11,
+                                                                 "train_loss":  0.167,
+                                                                 "train_acc":  97.35,
+                                                                 "val_loss":  0.1354,
+                                                                 "val_acc":  98.82,
+                                                                 "val_f1":  98.81
+                                                             },
+                                                             {
+                                                                 "epoch":  12,
+                                                                 "train_loss":  0.1605,
+                                                                 "train_acc":  97.49,
+                                                                 "val_loss":  0.121,
+                                                                 "val_acc":  99.41,
+                                                                 "val_f1":  99.41
+                                                             },
+                                                             {
+                                                                 "epoch":  13,
+                                                                 "train_loss":  0.1423,
+                                                                 "train_acc":  98.67,
+                                                                 "val_loss":  0.1186,
+                                                                 "val_acc":  99.71,
+                                                                 "val_f1":  99.71
+                                                             },
+                                                             {
+                                                                 "epoch":  14,
+                                                                 "train_loss":  0.1394,
+                                                                 "train_acc":  98.82,
+                                                                 "val_loss":  0.1186,
+                                                                 "val_acc":  99.41,
+                                                                 "val_f1":  99.41
+                                                             }
+                                                         ]
+                                         },
+                   "waist_classifier":  {
+                                            "model_name":  "waist_classifier",
+                                            "architecture":  "Residual SE-CNN (4-Stage Squeeze-and-Excitation + Dual Adaptive Pooling)",
+                                            "classes":  [
+                                                            "beamer",
+                                                            "legal_waist"
+                                                        ],
+                                            "total_samples":  1200,
+                                            "train_samples":  960,
+                                            "val_samples":  240,
+                                            "best_val_accuracy":  96.67,
+                                            "best_val_loss":  0.1692,
+                                            "precision":  95.16,
+                                            "recall":  98.33,
+                                            "f1_score":  96.72,
+                                            "confusion_matrix":  {
+                                                                     "tp":  118,
+                                                                     "tn":  114,
+                                                                     "fp":  6,
+                                                                     "fn":  2
+                                                                 },
+                                            "training_time_sec":  453.9,
+                                            "history":  [
+                                                            {
+                                                                "epoch":  1,
+                                                                "train_loss":  0.7399,
+                                                                "train_acc":  53.96,
+                                                                "val_loss":  0.6958,
+                                                                "val_acc":  50.0,
+                                                                "val_f1":  56.52
+                                                            },
+                                                            {
+                                                                "epoch":  2,
+                                                                "train_loss":  0.7303,
+                                                                "train_acc":  52.92,
+                                                                "val_loss":  1.0058,
+                                                                "val_acc":  50.0,
+                                                                "val_f1":  66.67
+                                                            },
+                                                            {
+                                                                "epoch":  3,
+                                                                "train_loss":  0.7208,
+                                                                "train_acc":  51.35,
+                                                                "val_loss":  0.721,
+                                                                "val_acc":  49.17,
+                                                                "val_f1":  65.14
+                                                            },
+                                                            {
+                                                                "epoch":  4,
+                                                                "train_loss":  0.7132,
+                                                                "train_acc":  51.88,
+                                                                "val_loss":  0.6989,
+                                                                "val_acc":  50.83,
+                                                                "val_f1":  48.7
+                                                            },
+                                                            {
+                                                                "epoch":  5,
+                                                                "train_loss":  0.7168,
+                                                                "train_acc":  50.21,
+                                                                "val_loss":  0.7059,
+                                                                "val_acc":  45.83,
+                                                                "val_f1":  59.63
+                                                            },
+                                                            {
+                                                                "epoch":  6,
+                                                                "train_loss":  0.7086,
+                                                                "train_acc":  51.77,
+                                                                "val_loss":  0.6868,
+                                                                "val_acc":  56.67,
+                                                                "val_f1":  60.61
+                                                            },
+                                                            {
+                                                                "epoch":  7,
+                                                                "train_loss":  0.7018,
+                                                                "train_acc":  54.27,
+                                                                "val_loss":  0.6586,
+                                                                "val_acc":  57.5,
+                                                                "val_f1":  45.16
+                                                            },
+                                                            {
+                                                                "epoch":  8,
+                                                                "train_loss":  0.5692,
+                                                                "train_acc":  69.17,
+                                                                "val_loss":  0.5155,
+                                                                "val_acc":  76.67,
+                                                                "val_f1":  72.55
+                                                            },
+                                                            {
+                                                                "epoch":  9,
+                                                                "train_loss":  0.4432,
+                                                                "train_acc":  77.92,
+                                                                "val_loss":  0.3908,
+                                                                "val_acc":  83.33,
+                                                                "val_f1":  83.74
+                                                            },
+                                                            {
+                                                                "epoch":  10,
+                                                                "train_loss":  0.3205,
+                                                                "train_acc":  87.6,
+                                                                "val_loss":  0.2526,
+                                                                "val_acc":  93.33,
+                                                                "val_f1":  93.5
+                                                            },
+                                                            {
+                                                                "epoch":  11,
+                                                                "train_loss":  0.2595,
+                                                                "train_acc":  91.98,
+                                                                "val_loss":  0.2478,
+                                                                "val_acc":  93.75,
+                                                                "val_f1":  94.12
+                                                            },
+                                                            {
+                                                                "epoch":  12,
+                                                                "train_loss":  0.2132,
+                                                                "train_acc":  94.9,
+                                                                "val_loss":  0.1705,
+                                                                "val_acc":  96.67,
+                                                                "val_f1":  96.72
+                                                            },
+                                                            {
+                                                                "epoch":  13,
+                                                                "train_loss":  0.1923,
+                                                                "train_acc":  96.77,
+                                                                "val_loss":  0.1692,
+                                                                "val_acc":  96.67,
+                                                                "val_f1":  96.72
+                                                            },
+                                                            {
+                                                                "epoch":  14,
+                                                                "train_loss":  0.1709,
+                                                                "train_acc":  97.29,
+                                                                "val_loss":  0.1748,
+                                                                "val_acc":  95.83,
+                                                                "val_f1":  95.93
+                                                            }
+                                                        ]
+                                        }
+               }
 }

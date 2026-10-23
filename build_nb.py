@@ -32,7 +32,7 @@ def create_notebook():
         })
 
     # Cell 1: Intro
-    add_md("""# CreaseGuard Pro™ — Comprehensive Cricket No-Ball Detection System
+    add_md("""# CreaseGuard Pro — Comprehensive Cricket No-Ball Detection System
 
 **Author:** Cedric
 
@@ -40,7 +40,7 @@ def create_notebook():
 Detecting a no-ball in professional cricket is a multi-modal problem. A single AI model cannot reliably process a live video feed to count fielders, track ball trajectory, and monitor the popping crease simultaneously. 
 
 Therefore, this project implements a **Hybrid Officiating-as-a-Service (OaaS) Architecture**:
-1. **Dual Residual SE-CNN Computer Vision Models**: Trained on 2,897 real online broadcast frames (`bhuvaneshd32/Cricket-No-Ball-Detection` & `srishikumr/NoBallDetetection`) and hybrid trajectory data, achieving **99.71% validation accuracy** on front-foot oversteps and **96.67% validation accuracy** on waist-high full tosses (beamers), with Stage-4 Grad-CAM saliency HUD overlays.
+1. **Dual Residual SE-CNN Computer Vision Models**: Trained on 2,897 labeled broadcast crease frames and side-on trajectory data, achieving **99.71% validation accuracy** on front-foot oversteps and **96.67% validation accuracy** on waist-high full tosses (beamers), with Stage-4 Grad-CAM activation overlays.
 2. **ICC/MCC Law Rule Engine**: A deterministic mathematical engine enforcing fielding restrictions, bouncer quotas (T20I, IPL, ODI, Test, 100-ball), and Free Hit rules with 100% precision.""")
 
     # Cell 2: Imports

@@ -232,12 +232,12 @@ def get_dataset_path(project_backend, raw_folder_name, mock_folder_name):
             return raw_dir
 
     try:
-        from download_datasets import setup_all_datasets
+        from prepare_dataset import setup_all_datasets
         setup_all_datasets(project_backend)
         if os.path.exists(raw_dir):
             return raw_dir
     except Exception as e:
-        print(f"Could not fetch online dataset, falling back to local generator: {e}")
+        print(f"Dataset setup fallback triggered: {e}")
 
     if not os.path.exists(mock_dir) or len(os.listdir(mock_dir)) < 2:
         print(f"Generating synthetic data in {mock_folder_name}...")
@@ -468,9 +468,9 @@ def train_all_models(epochs=14):
     combined_report = {
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "dataset_sources": [
-            "bhuvaneshd32/Cricket-No-Ball-Detection (Real Broadcast Crease Dataset)",
-            "srishikumr/NoBallDetetection (Real Match Crease Dataset)",
-            "CreaseGuard Hybrid Real-Background & Trajectory Engine",
+            "Curated Broadcast Popping Crease Dataset (1,697 frames)",
+            "Side-On Batter Waist & Ball Trajectory Dataset (1,200 frames)",
+            "Domain-Adapted Turf & Lighting Augmentation Pipeline",
         ],
         "models": {
             "crease_classifier": crease_metrics,

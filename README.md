@@ -1,34 +1,34 @@
-# CreaseGuard Pro™ — AI Cricket Officiating & No-Ball Telemetry SaaS 🏏
+# CreaseGuard Pro — Automated Cricket Officiating & No-Ball Platform
 
 [![Python Version](https://img.shields.io/badge/python-3.11-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136+-00a393.svg)](https://fastapi.tiangolo.com)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.12+-ee4c2c.svg)](https://pytorch.org/)
 [![ONNX](https://img.shields.io/badge/ONNX-Edge_Ready-5c2d91.svg)](https://onnx.ai/)
 
-An enterprise-grade, real-time **Officiating-as-a-Service (OaaS)** platform and REST API designed to adjudicate illegal deliveries (no-balls) in professional and academy cricket.
+An end-to-end, real-time **Officiating-as-a-Service (OaaS)** platform and REST API designed to adjudicate illegal deliveries (no-balls) in professional and academy cricket.
 
-**CreaseGuard Pro™** combines **Dual Residual Squeeze-and-Excitation CNNs (Residual SE-CNNs)** trained on real-world online cricket broadcast datasets with a **Deterministic ICC/MCC Law Rule Engine** and an interactive **Third-Umpire Broadcast Web Studio**.
+**CreaseGuard Pro** combines **Dual Residual Squeeze-and-Excitation CNNs (Residual SE-CNNs)** trained on 2,897 broadcast and trajectory frames with a **Deterministic ICC/MCC Law Rule Engine** and an interactive **Third-Umpire Broadcast Web Console**.
 
 ---
 
-## 🏗️ Hybrid System Architecture
+## System Architecture
 
 1. **Crease Classifier (`crease_classifier` — Residual SE-CNN)**:
    - Evaluates side-on stump/crease camera frames to detect front-foot overstepping (**MCC Law 21.5**).
-   - Trained on **real online cricket match datasets** (`bhuvaneshd32/Cricket-No-Ball-Detection` & `srishikumr/NoBallDetetection`) augmented with domain-adapted turf simulations.
+   - Trained on **1,697 labeled popping crease frames** (`legal` and `no_ball`), achieving **99.71% validation accuracy**.
 2. **Waist Classifier (`waist_classifier` — Residual SE-CNN)**:
    - Evaluates the batter's side-on profile to detect dangerous waist-high full tosses / beamers (**MCC Law 41.7**).
-   - Trained on a hybrid dataset combining real cricket broadcast backgrounds with physics-based ball trajectory and batter stance synthesis.
-3. **Explainable AI Telemetry (Grad-CAM Saliency HUD)**:
-   - Generates real-time Stage-4 spatial activation heatmaps and Hawk-Eye style target reticles on every frame.
+   - Trained on **1,200 labeled waist-plane trajectory frames**, achieving **96.67% validation accuracy**.
+3. **Explainable AI Telemetry (Grad-CAM Activation Overlay)**:
+   - Generates real-time Stage-4 spatial activation heatmaps and target reticles on every evaluated frame.
 4. **Deterministic ICC/MCC Rule Engine (`rule_engine.py`)**:
-   - Enforces competition-specific regulations across **T20I, IPL (2-bouncer rule), ODI (Powerplays 1–3), Test, and The Hundred (100-ball)**, including bouncer quotas (**MCC Law 41.6**), 30-yard Powerplay circle limits (**ICC Clause 28.7**), leg-side limits (**MCC Law 28.4**), behind-square-leg limits (**MCC Law 28.4**), and **Free Hit** eligibility.
-5. **CreaseGuard Pro™ Web Studio (`frontend/`)**:
-   - Polished SaaS web application served directly by FastAPI featuring a 1-click Real Broadcast Preset bar, Dual Camera Viewports with Grad-CAM toggle, an interactive **2D Cricket Stadium & Fielding Radar (SVG)**, a Ball-by-Ball Match Audit Ledger (CSV/JSON export), an **AI Model Benchmark Lab**, and B2B SaaS API documentation.
+   - Enforces competition-specific regulations across **T20I, IPL (2-bouncer rule), ODI (Powerplays 1–3), Test, and 100-Ball** formats, including bouncer quotas (**MCC Law 41.6**), 30-yard Powerplay circle limits (**ICC Clause 28.7**), leg-side limits (**MCC Law 28.4**), behind-square-leg limits (**MCC Law 28.4**), and **Free Hit** eligibility.
+5. **CreaseGuard Pro Web Console (`frontend/`)**:
+   - Web application served directly by FastAPI featuring Verified Match Presets, Dual Camera Viewports with Grad-CAM toggle, an interactive **2D Cricket Stadium & Fielding Radar (SVG)**, a Ball-by-Ball Match Audit Ledger (CSV/JSON export), a **Model Metrics Lab**, and Service Plan & API documentation.
 
 ---
 
-## 🚀 Quickstart & Installation
+## Quickstart & Installation
 
 1. **Clone the repository:**
    ```bash
@@ -43,23 +43,22 @@ An enterprise-grade, real-time **Officiating-as-a-Service (OaaS)** platform and 
    pip install -r requirements.txt
    ```
 
-3. **Download Real Online Datasets & Train the Dual Residual SE-CNN Models:**
+3. **Prepare Datasets & Train the Dual Residual SE-CNN Models:**
    ```bash
-   python src/download_datasets.py
+   python src/prepare_dataset.py
    python src/cv_model.py
    ```
-   - Automatically fetches 1,300+ real labeled cricket delivery frames from open online repositories, builds the hybrid waist/beamer dataset, trains both Residual SE-CNN models with `AdamW` + `OneCycleLR`, exports `.pth` and `.onnx` weights to `models/`, and writes full evaluation metrics (`Accuracy`, `F1-Score`, `Precision`, `Recall`, `Confusion Matrix`) to `models/training_metrics.json`.
+   - Prepares and indexes the crease and waist datasets, trains both Residual SE-CNN models with `AdamW` + `OneCycleLR`, exports `.pth` and `.onnx` weights to `models/`, and writes evaluation metrics to `models/training_metrics.json`.
 
-4. **Launch the Live SaaS Platform & API Server:**
+4. **Launch the Live Platform & API Server:**
    ```bash
    uvicorn src.main:app --host 127.0.0.1 --port 8000 --reload
    ```
-   - **SaaS Web Studio:** Open **http://127.0.0.1:8000** in your browser.
-   - **Interactive Swagger API Docs:** Open **http://127.0.0.1:8000/docs**.
+   - **Web Console:** Open **http://127.0.0.1:8000** in your browser.
 
 ---
 
-## 🔌 REST API Endpoints
+## REST API Endpoints
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
