@@ -16,7 +16,12 @@ from generate_data import generate_dataset
 
 
 class SEBlock(nn.Module):
-    """Squeeze-and-Excitation channel attention block."""
+    """
+    Squeeze-and-Excitation block.
+    Helps the network weight important feature channels (like the white crease line
+    or shoe edge) higher than background grass noise.
+    """
+
     def __init__(self, channels: int, reduction: int = 8):
         super().__init__()
         mid = max(channels // reduction, 4)
@@ -35,7 +40,11 @@ class SEBlock(nn.Module):
 
 
 class ResidualConvBlock(nn.Module):
-    """Residual convolutional stage with BatchNorm, SE attention, and downsampling."""
+    """
+    Standard residual block with two 3x3 conv layers, batch norm, channel attention,
+    and a 1x1 shortcut connection so gradients flow cleanly during training.
+    """
+
     def __init__(self, in_ch: int, out_ch: int, stride: int = 2):
         super().__init__()
         self.conv_path = nn.Sequential(
@@ -46,10 +55,14 @@ class ResidualConvBlock(nn.Module):
             nn.BatchNorm2d(out_ch),
         )
         self.se = SEBlock(out_ch)
-        self.shortcut = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=stride, bias=False),
-            nn.BatchNorm2d(out_ch),
-        ) if (stride != 1 or in_ch != out_ch) else nn.Identity()
+        self.shortcut = (
+            nn.Sequential(
+                nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_ch),
+            )
+            if (stride != 1 or in_ch != out_ch)
+            else nn.Identity()
+        )
         self.act = nn.ReLU(inplace=True)
 
     def forward(self, x):
@@ -61,26 +74,28 @@ class ResidualConvBlock(nn.Module):
 
 class CricketClassifier(nn.Module):
     """
-    Upgraded Residual SE-CNN Architecture for Cricket No-Ball & Beamer Detection.
-    Combines multi-scale residual blocks with Squeeze-and-Excitation attention
-    and dual Adaptive Avg+Max pooling for robust spatial recognition on both
-    real broadcast television frames and synthetic simulations.
+    Main CNN used for both front-foot overstep detection and waist-high beamer detection.
+    Takes a 128x128 RGB image and outputs logits for 2 classes.
     """
+
     def __init__(self, num_classes: int = 2):
         super(CricketClassifier, self).__init__()
+        # Initial stem keeps spatial resolution at 128x128 before downsampling
         self.stem = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
         )
-        self.stage1 = ResidualConvBlock(32, 64, stride=2)    # 64x64
-        self.stage2 = ResidualConvBlock(64, 128, stride=2)   # 32x32
-        self.stage3 = ResidualConvBlock(128, 192, stride=2)  # 16x16
-        self.stage4 = ResidualConvBlock(192, 256, stride=2)  # 8x8
+        # Four downsampling stages: 128 -> 64 -> 32 -> 16 -> 8
+        self.stage1 = ResidualConvBlock(32, 64, stride=2)
+        self.stage2 = ResidualConvBlock(64, 128, stride=2)
+        self.stage3 = ResidualConvBlock(128, 192, stride=2)
+        self.stage4 = ResidualConvBlock(192, 256, stride=2)
 
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.max_pool = nn.AdaptiveMaxPool2d((1, 1))
 
+        # Combine average and max pooled features (256 + 256 = 512) for the final linear layers
         self.classifier = nn.Sequential(
             nn.Flatten(),
             nn.Linear(256 * 2, 160),
@@ -100,6 +115,7 @@ class CricketClassifier(nn.Module):
 
     def forward(self, x):
         feat = self.forward_features(x)
+        # Using mean and amax across spatial dims works cleanly with ONNX export
         avg_p = torch.mean(feat, dim=(2, 3), keepdim=True)
         max_p = torch.amax(feat, dim=(2, 3), keepdim=True)
         pooled = torch.cat([avg_p, max_p], dim=1)
@@ -115,43 +131,42 @@ def generate_gradcam_telemetry(
     prob_illegal: float = 0.0,
 ) -> str:
     """
-    Generates a broadcast-style AI Vision Telemetry overlay combining Grad-CAM
-    spatial activation heatmaps with a Hawk-Eye HUD overlay, returned as a
-    base64 PNG data URL.
+    Builds a Grad-CAM style activation heatmap from the final conv stage (stage4)
+    so we can see which part of the image the CNN focused on when making its call.
+    Returns a base64 JPEG data URL for the frontend.
     """
     model.eval()
     orig_rgb = np.array(pil_img.convert("RGB").resize((320, 320)))
     input_tensor = transform(pil_img).unsqueeze(0).to(device)
 
-    # Compute spatial activation map from stage4 feature maps
+    # Grab the 8x8 spatial feature maps from stage4 and average positive activations
     with torch.no_grad():
-        feat = model.forward_features(input_tensor)  # [1, 256, 8, 8]
-        # Weight channels by L2 energy & positive activation
+        feat = model.forward_features(input_tensor)
         heatmap = torch.mean(F.relu(feat), dim=1).squeeze(0).cpu().numpy()
 
     heatmap = np.maximum(heatmap, 0)
     if heatmap.max() > 1e-6:
         heatmap = heatmap / heatmap.max()
 
+    # Resize the 8x8 activation map up to 320x320 and apply a Jet color map
     heatmap_resized = cv2.resize(heatmap, (320, 320), interpolation=cv2.INTER_CUBIC)
     heatmap_uint8 = np.uint8(255 * heatmap_resized)
     colored_map = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
     colored_map_rgb = cv2.cvtColor(colored_map, cv2.COLOR_BGR2RGB)
 
-    # Blend original frame with Grad-CAM heatmap
+    # Blend the original camera frame with the heatmap
     blended = cv2.addWeighted(orig_rgb, 0.64, colored_map_rgb, 0.36, 0)
 
-    # Draw Hawk-Eye Broadcast Telemetry HUD elements
     is_illegal = prob_illegal > 0.50
-    accent_color = (239, 68, 68) if is_illegal else (16, 185, 129)  # Red vs Emerald
+    accent_color = (239, 68, 68) if is_illegal else (16, 185, 129)
 
-    # Top telemetry bar
+    # Draw top and bottom status bars on the image
     overlay = blended.copy()
     cv2.rectangle(overlay, (0, 0), (320, 36), (10, 15, 28), -1)
     cv2.rectangle(overlay, (0, 288), (320, 320), (10, 15, 28), -1)
     blended = cv2.addWeighted(overlay, 0.78, blended, 0.22, 0)
 
-    # Target reticle around peak activation region
+    # Mark the peak activation spot with a target reticle
     max_loc = np.unravel_index(np.argmax(heatmap_resized), heatmap_resized.shape)
     cy, cx = int(max_loc[0]), int(max_loc[1])
     cx = max(40, min(280, cx))
@@ -202,6 +217,7 @@ def generate_gradcam_telemetry(
 
 
 def get_dataset_path(project_backend, raw_folder_name, mock_folder_name):
+    # Use the real downloaded dataset if it exists, otherwise fall back to synthetic data
     raw_dir = os.path.join(project_backend, "data", raw_folder_name)
     mock_dir = os.path.join(project_backend, "data", mock_folder_name)
 
@@ -215,17 +231,16 @@ def get_dataset_path(project_backend, raw_folder_name, mock_folder_name):
         if total_files > 20:
             return raw_dir
 
-    # Try downloading real datasets if raw_dir is missing
     try:
         from download_datasets import setup_all_datasets
         setup_all_datasets(project_backend)
         if os.path.exists(raw_dir):
             return raw_dir
     except Exception as e:
-        print(f"Online dataset setup fallback triggered: {e}")
+        print(f"Could not fetch online dataset, falling back to local generator: {e}")
 
     if not os.path.exists(mock_dir) or len(os.listdir(mock_dir)) < 2:
-        print(f"Data missing for {mock_folder_name}. Generating synthetic datasets...")
+        print(f"Generating synthetic data in {mock_folder_name}...")
         generate_dataset(
             num_samples_per_class=500,
             base_dir=os.path.join(project_backend, "data", "mock"),
@@ -236,11 +251,10 @@ def get_dataset_path(project_backend, raw_folder_name, mock_folder_name):
 
 def train_generic_model(data_dir, model_filename, epochs=14, batch_size=32, lr=0.0015):
     project_backend = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    print(f"\n=======================================================")
-    print(f" Training Upgraded Residual SE-CNN: {model_filename}")
-    print(f" Dataset Directory: {data_dir}")
-    print(f"=======================================================")
+    print(f"\nTraining model: {model_filename}")
+    print(f"Dataset path: {data_dir}")
 
+    # Apply random flips, slight rotations, and color jitter only to the training set
     train_transform = transforms.Compose([
         transforms.Resize((136, 136)),
         transforms.RandomCrop((128, 128)),
@@ -251,6 +265,7 @@ def train_generic_model(data_dir, model_filename, epochs=14, batch_size=32, lr=0
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
+    # Validation set only gets resized and normalized so evaluation stays consistent
     val_transform = transforms.Compose([
         transforms.Resize((128, 128)),
         transforms.ToTensor(),
@@ -261,9 +276,9 @@ def train_generic_model(data_dir, model_filename, epochs=14, batch_size=32, lr=0
     train_full = datasets.ImageFolder(root=data_dir, transform=train_transform)
     val_full = datasets.ImageFolder(root=data_dir, transform=val_transform)
 
-    print(f"Classes found: {base_dataset.classes} (Total samples: {len(base_dataset)})")
+    print(f"Classes: {base_dataset.classes} (Total images: {len(base_dataset)})")
 
-    # Deterministic stratified split (80% train, 20% val)
+    # Split 80% train / 20% validation while keeping class ratios balanced
     np.random.seed(42)
     targets = np.array(base_dataset.targets)
     train_indices, val_indices = [], []
@@ -277,7 +292,6 @@ def train_generic_model(data_dir, model_filename, epochs=14, batch_size=32, lr=0
     train_dataset = Subset(train_full, train_indices)
     val_dataset = Subset(val_full, val_indices)
 
-    # Calculate class weights to handle any class imbalance
     train_targets = targets[train_indices]
     class_counts = np.bincount(train_targets, minlength=2)
     total_train_samples = len(train_indices)
@@ -334,6 +348,7 @@ def train_generic_model(data_dir, model_filename, epochs=14, batch_size=32, lr=0
         epoch_train_loss = running_loss / len(train_dataset)
         epoch_train_acc = correct_train / total_train
 
+        # Evaluate on validation set at the end of each epoch
         model.eval()
         val_loss = 0.0
         correct_val = 0
@@ -377,6 +392,7 @@ def train_generic_model(data_dir, model_filename, epochs=14, batch_size=32, lr=0
             f"Val Loss: {epoch_val_loss:.4f} Acc: {epoch_val_acc*100:.2f}% F1: {f1*100:.2f}%"
         )
 
+        # Save checkpoint whenever validation accuracy improves
         if (epoch_val_acc > best_val_acc) or (
             abs(epoch_val_acc - best_val_acc) < 1e-4 and epoch_val_loss < best_val_loss
         ):
@@ -400,7 +416,7 @@ def train_generic_model(data_dir, model_filename, epochs=14, batch_size=32, lr=0
                 "history": history,
             }
 
-    print(f"Best weights saved to: {pth_path} (Best Val Acc: {best_val_acc*100:.2f}%)")
+    print(f"Saved best weights to: {pth_path} (Best Val Acc: {best_val_acc*100:.2f}%)")
     export_to_onnx(pth_path, project_backend, model_filename)
     return best_metrics
 
@@ -429,22 +445,20 @@ def export_to_onnx(pth_path, project_backend, model_filename):
             output_names=["output"],
             dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
         )
-        print(f"ONNX model saved to: {onnx_path}")
+        print(f"Exported ONNX model to: {onnx_path}")
     except Exception as e:
-        print(f"ONNX export skipped/failed: {e}")
+        print(f"ONNX export skipped: {e}")
 
 
 def train_all_models(epochs=14):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_backend = os.path.dirname(script_dir)
 
-    # 1. Train Crease Model (Front-foot overstepping on real online + hybrid datasets)
     crease_data_dir = get_dataset_path(project_backend, "raw_images", "mock")
     crease_metrics = train_generic_model(
         crease_data_dir, "crease_classifier", epochs=epochs
     )
 
-    # 2. Train Waist Model (Beamers on real-background + trajectory dataset)
     waist_data_dir = get_dataset_path(project_backend, "raw_waist_images", "waist_mock")
     waist_metrics = train_generic_model(
         waist_data_dir, "waist_classifier", epochs=epochs
@@ -465,7 +479,7 @@ def train_all_models(epochs=14):
     }
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(combined_report, f, indent=2)
-    print(f"\nSaved comprehensive training metrics report to {metrics_path}")
+    print(f"Saved training metrics to {metrics_path}")
     return combined_report
 
 

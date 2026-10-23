@@ -509,9 +509,10 @@ body {
   padding: 1.25rem;
 }
 
-.upload-icon {
-  font-size: 2rem;
-  margin-bottom: 0.4rem;
+.upload-icon-svg {
+  margin-bottom: 0.55rem;
+  display: flex;
+  justify-content: center;
 }
 
 .upload-title {
@@ -708,8 +709,12 @@ body {
 }
 
 .reasons-list li::before {
-  content: "⚠";
-  color: var(--crimson);
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--crimson);
+  flex-shrink: 0;
 }
 
 /* 6-Point Compliance Grid */
@@ -1320,7 +1325,20 @@ body {
 }
 
 .tier-features li {
-  padding: 0.32rem 0;
+  padding: 0.35rem 0;
+  padding-left: 1rem;
+  position: relative;
+}
+
+.tier-features li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.72rem;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--emerald);
 }
 
 .btn-primary-full, .btn-outline-full {

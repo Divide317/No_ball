@@ -20,12 +20,14 @@ from cv_model import CricketClassifier, generate_gradcam_telemetry
 from rule_engine import CricketRuleEngine
 from generate_data import create_synthetic_crease_image, create_synthetic_waist_image
 
+# Initialize FastAPI server
 app = FastAPI(
-    title="CreaseGuard Pro — AI Cricket Officiating & No-Ball SaaS API",
-    description="Dual Residual SE-CNN Computer Vision models trained on real cricket broadcast datasets combined with a deterministic ICC/MCC Law Rule Engine.",
+    title="CreaseGuard Pro - Cricket No-Ball Detection API",
+    description="Combines dual PyTorch CNNs for crease and waist checks with an ICC/MCC rule engine.",
     version="3.0.0",
 )
 
+# Enable CORS so the frontend can communicate with the API without browser restrictions
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -39,8 +41,11 @@ crease_model: Optional[CricketClassifier] = None
 waist_model: Optional[CricketClassifier] = None
 rule_engine = CricketRuleEngine()
 startup_time = time.time()
+
+# Keep an in-memory log of deliveries evaluated during the current session
 delivery_history = []
 
+# Same image preprocessing pipeline used during validation
 img_transform = transforms.Compose([
     transforms.Resize((128, 128)),
     transforms.ToTensor(),
@@ -53,16 +58,18 @@ FRONTEND_DIR = os.path.join(PROJECT_BACKEND, "frontend")
 MODELS_DIR = os.path.join(PROJECT_BACKEND, "models")
 SAMPLES_DIR = os.path.join(PROJECT_BACKEND, "data", "samples")
 
+# Mount the frontend folder so CSS and JS files are served at /static
 if os.path.exists(FRONTEND_DIR):
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 
+# Pre-configured match scenarios for quick testing in the web interface
 SAMPLE_PRESETS = [
     {
         "id": "real_overstep",
         "title": "Real Broadcast: Front-Foot Overstep",
-        "subtitle": "ICC Law 21.5 • Real TV Stump/Crease Camera Frame",
-        "badge": "NO-BALL (AI VISION)",
+        "subtitle": "MCC Law 21.5 | Real TV Stump/Crease Camera Frame",
+        "badge": "NO-BALL (VISION)",
         "badge_type": "danger",
         "foot_file": "real_noball_1.jpg",
         "waist_file": "waist_legal_1.jpg",
@@ -83,7 +90,7 @@ SAMPLE_PRESETS = [
     {
         "id": "real_legal",
         "title": "Real Broadcast: Fair Delivery Behind Line",
-        "subtitle": "ICC Law 21.5 • Heel Grounded Behind Popping Crease",
+        "subtitle": "MCC Law 21.5 | Heel Grounded Behind Popping Crease",
         "badge": "LEGAL DELIVERY",
         "badge_type": "success",
         "foot_file": "real_legal_1.jpg",
@@ -104,8 +111,8 @@ SAMPLE_PRESETS = [
     },
     {
         "id": "real_tight_noball",
-        "title": "TV Third-Umpire Review: Close Margin Overstep",
-        "subtitle": "ICC Law 21.5 • Millimeter Crease Line Evaluation",
+        "title": "Third-Umpire Review: Close Margin Overstep",
+        "subtitle": "MCC Law 21.5 | Tight Crease Line Evaluation",
         "badge": "NO-BALL (CLOSE CALL)",
         "badge_type": "danger",
         "foot_file": "real_noball_2.jpg",
@@ -127,8 +134,8 @@ SAMPLE_PRESETS = [
     {
         "id": "waist_beamer",
         "title": "Dangerous Delivery: Waist-High Beamer",
-        "subtitle": "MCC Law 41.7 • Full Toss Above Batter Waist Plane",
-        "badge": "NO-BALL (BEAMER AI)",
+        "subtitle": "MCC Law 41.7 | Full Toss Above Batter Waist Plane",
+        "badge": "NO-BALL (BEAMER)",
         "badge_type": "danger",
         "foot_file": "real_legal_2.jpg",
         "waist_file": "waist_beamer_1.jpg",
@@ -149,8 +156,8 @@ SAMPLE_PRESETS = [
     {
         "id": "powerplay_breach",
         "title": "Tactical Fault: Powerplay Circle Violation",
-        "subtitle": "ICC Clause 28.7 • 3 Fielders Outside 30-Yard Circle in Over 4",
-        "badge": "NO-BALL (FIELDING RULE)",
+        "subtitle": "ICC Clause 28.7 | 3 Fielders Outside Circle in Over 4",
+        "badge": "NO-BALL (FIELDING)",
         "badge_type": "warning",
         "foot_file": "real_legal_1.jpg",
         "waist_file": "waist_legal_1.jpg",
@@ -171,8 +178,8 @@ SAMPLE_PRESETS = [
     {
         "id": "bouncer_exceeded",
         "title": "Bowler Quota: 2nd Bouncer in T20I Over",
-        "subtitle": "MCC Law 41.6 • Exceeds 1 Short-Pitched Limit in T20I",
-        "badge": "NO-BALL (BOUNCER LIMIT)",
+        "subtitle": "MCC Law 41.6 | Exceeds 1 Short-Pitched Limit in T20I",
+        "badge": "NO-BALL (BOUNCER)",
         "badge_type": "warning",
         "foot_file": "real_legal_2.jpg",
         "waist_file": "waist_legal_1.jpg",
@@ -195,9 +202,9 @@ SAMPLE_PRESETS = [
 
 @app.on_event("startup")
 def load_cv_models():
+    """Load both trained PyTorch checkpoints into memory when the server starts."""
     global crease_model, waist_model
 
-    # Load Crease Model
     crease_path = os.path.join(MODELS_DIR, "crease_classifier.pth")
     crease_model = CricketClassifier()
     if os.path.exists(crease_path):
@@ -207,13 +214,12 @@ def load_cv_models():
             crease_model.eval()
             print(f"Loaded Crease Model from {crease_path}")
         except Exception as e:
-            print(f"Warning: Failed to load Crease weights ({e}).")
+            print(f"Failed to load Crease weights ({e}).")
             crease_model = None
     else:
         print("Warning: Crease weights not found.")
         crease_model = None
 
-    # Load Waist Model
     waist_path = os.path.join(MODELS_DIR, "waist_classifier.pth")
     waist_model = CricketClassifier()
     if os.path.exists(waist_path):
@@ -223,7 +229,7 @@ def load_cv_models():
             waist_model.eval()
             print(f"Loaded Waist Model from {waist_path}")
         except Exception as e:
-            print(f"Warning: Failed to load Waist weights ({e}).")
+            print(f"Failed to load Waist weights ({e}).")
             waist_model = None
     else:
         print("Warning: Waist weights not found.")
@@ -232,13 +238,14 @@ def load_cv_models():
 
 @app.get("/")
 def read_root(request: Request):
+    # Serve the web dashboard when opened in a browser, or return JSON status for API callers
     frontend_index = os.path.join(FRONTEND_DIR, "index.html")
     accept = request.headers.get("accept", "")
     if "text/html" in accept and os.path.exists(frontend_index):
         return FileResponse(frontend_index)
     return {
         "status": "online",
-        "service": "CreaseGuard Pro — Dual-CV Cricket No-Ball Detection SaaS",
+        "service": "CreaseGuard Pro - Dual-CV Cricket No-Ball Detection API",
         "version": "3.0.0",
         "message": "Dual-CV Cricket No-Ball Detection API is active.",
         "crease_model_loaded": crease_model is not None,
@@ -274,8 +281,7 @@ def get_training_metrics():
     metrics_path = os.path.join(MODELS_DIR, "training_metrics.json")
     if os.path.exists(metrics_path):
         with open(metrics_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data
+            return json.load(f)
     return {
         "updated_at": None,
         "dataset_sources": ["Synthetic Fallback"],
@@ -299,16 +305,6 @@ def get_sample_image(sample_id: str, cam_type: str):
     if os.path.exists(file_path):
         return FileResponse(file_path, media_type="image/jpeg")
 
-    # Fallback on-the-fly generation if sample file missing
-    is_illegal = "noball" in filename or "beamer" in filename
-    img = (
-        create_synthetic_crease_image(is_no_ball=is_illegal)
-        if cam_type == "foot"
-        else create_synthetic_waist_image(is_beamer=is_illegal)
-    )
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG")
-    buf.seek(0)
     return JSONResponse(status_code=404, content={"detail": "Sample image missing"})
 
 
@@ -354,9 +350,16 @@ async def check_delivery(
     fielders_leg_side: int = Form(0, description="Fielders on the leg side"),
     fielders_behind_square: int = Form(0, description="Fielders behind square leg"),
     fielders_outside_circle: int = Form(0, description="Fielders outside the 30-yard circle"),
-    bowler_name: str = Form("Bowler", description="Bowler name for telemetry log"),
-    batter_name: str = Form("Batter", description="Batter name for telemetry log"),
+    bowler_name: str = Form("Bowler", description="Bowler name for match log"),
+    batter_name: str = Form("Batter", description="Batter name for match log"),
 ):
+    """
+    Main endpoint that processes a single delivery:
+    1. Runs the crease image through the front-foot CNN.
+    2. Optionally runs the waist image through the beamer CNN.
+    3. Checks fielding positions and bouncer limits via the rule engine.
+    4. Returns the combined verdict, probabilities, and Grad-CAM heatmaps.
+    """
     t0 = time.perf_counter()
     reasons = []
     is_no_ball = False
@@ -368,7 +371,7 @@ async def check_delivery(
     waist_telemetry_b64 = None
     manual_beamer_flag = bool(is_beamer)
 
-    # 1. Run Crease Model
+    # Step 1: Evaluate front-foot landing with the Crease CNN
     try:
         foot_content = await foot_image.read()
         pil_foot = Image.open(io.BytesIO(foot_content)).convert("RGB")
@@ -376,6 +379,7 @@ async def check_delivery(
             tensor_foot = img_transform(pil_foot).unsqueeze(0).to(device)
             with torch.no_grad():
                 outputs = crease_model(tensor_foot)
+                # Class 0 is 'legal', Class 1 is 'no_ball'
                 overstep_prob = F.softmax(outputs, dim=1)[0][1].item()
 
             if overstep_prob > 0.50:
@@ -395,7 +399,7 @@ async def check_delivery(
     except Exception as e:
         reasons.append(f"Crease image evaluation failed: {e}")
 
-    # 2. Run Waist Model (if provided)
+    # Step 2: Evaluate waist-high full toss if a second camera frame was uploaded
     if waist_image is not None and getattr(waist_image, "filename", "") != "":
         try:
             waist_content = await waist_image.read()
@@ -410,7 +414,7 @@ async def check_delivery(
                         beamer_prob = F.softmax(outputs, dim=1)[0][0].item()
 
                     if beamer_prob > 0.50:
-                        is_beamer = True  # Auto-override manual flag
+                        is_beamer = True
                         reasons.append(
                             f"Waist-high full toss (beamer) detected by AI Vision ({beamer_prob*100:.1f}% confidence, MCC Law 41.7)."
                         )
@@ -426,7 +430,7 @@ async def check_delivery(
         except Exception as e:
             reasons.append(f"Waist image evaluation failed: {e}")
 
-    # 3. Run Law-Based Rule Engine
+    # Step 3: Run deterministic ICC/MCC rule checks
     try:
         rule_violation, rule_reasons = rule_engine.check_delivery(
             match_format=match_format,
@@ -442,6 +446,7 @@ async def check_delivery(
 
         if rule_violation:
             is_no_ball = True
+            # Avoid duplicating the beamer message if the AI already added it above
             reasons.extend(
                 [r for r in rule_reasons if "beamer" not in r.lower() or beamer_prob <= 0.50]
             )

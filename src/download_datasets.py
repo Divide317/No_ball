@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 import numpy as np
 
+# Open-source GitHub repositories containing real labeled cricket delivery images
 GITHUB_TREES = [
     {
         "name": "bhuvaneshd32/Cricket-No-Ball-Detection",
@@ -57,6 +58,7 @@ def fetch_json(url: str):
 
 
 def download_and_verify_image(url: str, dest_path: str) -> bool:
+    # Skip download if we already have a valid copy on disk
     if os.path.exists(dest_path) and os.path.getsize(dest_path) > 512:
         return True
     try:
@@ -77,8 +79,8 @@ def download_and_verify_image(url: str, dest_path: str) -> bool:
 
 def download_real_crease_datasets(project_backend: str, max_per_class: int = 650):
     """
-    Downloads real-world cricket front-foot no-ball and legal delivery images
-    from open online GitHub datasets into data/raw_images/{legal,no_ball}.
+    Downloads real-world front-foot no-ball and legal delivery images from GitHub
+    into data/raw_images/{legal,no_ball}.
     """
     raw_dir = os.path.join(project_backend, "data", "raw_images")
     legal_dir = os.path.join(raw_dir, "legal")
@@ -90,7 +92,7 @@ def download_real_crease_datasets(project_backend: str, max_per_class: int = 650
     noball_tasks = []
 
     for repo in GITHUB_TREES:
-        print(f"Querying online dataset index: {repo['name']} ...")
+        print(f"Fetching file tree from {repo['name']} ...")
         try:
             tree_data = fetch_json(repo["tree_url"])
         except Exception as e:
@@ -118,10 +120,8 @@ def download_real_crease_datasets(project_backend: str, max_per_class: int = 650
             elif any(path.startswith(p) for p in repo["noball_prefixes"]):
                 noball_tasks.append((full_url, os.path.join(noball_dir, safe_name)))
 
-    # Prioritize Small-image-dataset, Final-test, validation, testing, then training
     random.seed(42)
     if len(legal_tasks) > max_per_class:
-        # Keep deterministic priority items + sample rest
         priority = [t for t in legal_tasks if "Large-image-dataset/training" not in t[0]]
         others = [t for t in legal_tasks if "Large-image-dataset/training" in t[0]]
         random.shuffle(others)
@@ -137,7 +137,7 @@ def download_real_crease_datasets(project_backend: str, max_per_class: int = 650
         ("no_ball", u, d) for u, d in noball_tasks
     ]
     print(
-        f"Downloading {len(legal_tasks)} real 'legal' and {len(noball_tasks)} real 'no_ball' cricket images..."
+        f"Downloading {len(legal_tasks)} legal and {len(noball_tasks)} no_ball images..."
     )
 
     counts = {"legal": 0, "no_ball": 0}
@@ -154,7 +154,7 @@ def download_real_crease_datasets(project_backend: str, max_per_class: int = 650
                 counts[label] += 1
             if done_count % 200 == 0 or done_count == len(all_tasks):
                 print(
-                    f"  Progress: {done_count}/{len(all_tasks)} processed "
+                    f"  Progress: {done_count}/{len(all_tasks)} "
                     f"(Legal: {counts['legal']}, No-Ball: {counts['no_ball']})"
                 )
 
@@ -163,9 +163,8 @@ def download_real_crease_datasets(project_backend: str, max_per_class: int = 650
 
 def create_hybrid_waist_dataset(project_backend: str, num_samples_per_class: int = 600):
     """
-    Creates a rich hybrid dataset for waist-high full toss (beamer) detection in
-    data/raw_waist_images/{legal_waist,beamer} by combining real cricket broadcast
-    backgrounds with physics-based ball trajectory & batter stance synthesis.
+    Builds the waist-high full toss (beamer) dataset in data/raw_waist_images
+    by combining real match backgrounds with ball trajectory rendering.
     """
     raw_crease_legal = os.path.join(project_backend, "data", "raw_images", "legal")
     waist_dir = os.path.join(project_backend, "data", "raw_waist_images")
@@ -182,9 +181,7 @@ def create_hybrid_waist_dataset(project_backend: str, num_samples_per_class: int
             if f.endswith(".jpg")
         ]
 
-    print(
-        f"Building {num_samples_per_class * 2} hybrid real-background & broadcast waist/beamer images..."
-    )
+    print(f"Building {num_samples_per_class * 2} waist/beamer training images...")
     random.seed(101)
 
     for cls_name, is_beamer in [("legal_waist", False), ("beamer", True)]:
@@ -221,7 +218,6 @@ def render_broadcast_waist_frame(is_beamer: bool, real_bg_path=None, size=(160, 
         bg = None
 
     if bg is None:
-        # Broadcast stadium & turf gradient
         arr = np.zeros((h, w, 3), dtype=np.uint8)
         sky_col = np.array(
             [random.randint(70, 135), random.randint(95, 155), random.randint(130, 195)]
@@ -242,11 +238,9 @@ def render_broadcast_waist_frame(is_beamer: bool, real_bg_path=None, size=(160, 
 
     draw = ImageDraw.Draw(bg, "RGBA")
 
-    # Popping crease line on pitch
     crease_y = random.randint(int(h * 0.76), int(h * 0.84))
     draw.line([(0, crease_y), (w, crease_y)], fill=(245, 245, 245, 210), width=3)
 
-    # Batter stance at crease (side-on broadcast profile)
     batter_x = random.randint(int(w * 0.18), int(w * 0.30))
     waist_y = random.randint(int(h * 0.45), int(h * 0.54))
     head_y = waist_y - random.randint(26, 34)
@@ -262,20 +256,16 @@ def render_broadcast_waist_frame(is_beamer: bool, real_bg_path=None, size=(160, 
     jersey = random.choice(jersey_colors)
     pad_color = (230, 230, 235, 255)
 
-    # Legs / Pads
     draw.rounded_rectangle(
         [batter_x - 7, waist_y, batter_x + 9, foot_y], radius=4, fill=pad_color
     )
-    # Torso
     draw.rounded_rectangle(
         [batter_x - 9, head_y + 10, batter_x + 11, waist_y + 4], radius=5, fill=jersey
     )
-    # Helmet
     draw.ellipse(
         [batter_x - 7, head_y - 4, batter_x + 9, head_y + 11],
         fill=(25, 45, 95, 255),
     )
-    # Bat held near waist/crease
     bat_bottom_y = waist_y + random.randint(8, 26)
     draw.line(
         [(batter_x + 6, waist_y - 2), (batter_x + 18, bat_bottom_y)],
@@ -283,7 +273,6 @@ def render_broadcast_waist_frame(is_beamer: bool, real_bg_path=None, size=(160, 
         width=5,
     )
 
-    # Waist reference indicator (subtle Hawk-Eye tracking dashed plane)
     for x_seg in range(0, w, 12):
         draw.line(
             [(x_seg, waist_y), (min(x_seg + 6, w), waist_y)],
@@ -291,7 +280,6 @@ def render_broadcast_waist_frame(is_beamer: bool, real_bg_path=None, size=(160, 
             width=2,
         )
 
-    # Ball trajectory & position
     ball_x = random.randint(batter_x + 18, int(w * 0.78))
     ball_radius = random.randint(4, 6)
     is_white_ball = random.random() > 0.45
@@ -299,17 +287,14 @@ def render_broadcast_waist_frame(is_beamer: bool, real_bg_path=None, size=(160, 
     trail_color = (255, 255, 255, 95) if is_white_ball else (255, 80, 80, 95)
 
     if is_beamer:
-        # Full toss passing ABOVE waist height without bouncing
         ball_y = random.randint(max(12, head_y - 4), waist_y - 7)
         release_y = random.randint(int(h * 0.22), int(h * 0.36))
-        # Draw full-toss trajectory arc from bowler end (right) to ball_x
         draw.line(
             [(w - 5, release_y), (ball_x, ball_y)],
             fill=trail_color,
             width=3,
         )
     else:
-        # Legal delivery: either below waist OR bouncing off pitch
         ball_y = random.randint(waist_y + 8, crease_y - 4)
         bounce_x = min(w - 12, ball_x + random.randint(15, 45))
         bounce_y = crease_y - random.randint(0, 6)
@@ -319,7 +304,6 @@ def render_broadcast_waist_frame(is_beamer: bool, real_bg_path=None, size=(160, 
             width=3,
         )
 
-    # Draw cricket ball with seam highlight
     draw.ellipse(
         [
             ball_x - ball_radius,
@@ -338,10 +322,6 @@ def render_broadcast_waist_frame(is_beamer: bool, real_bg_path=None, size=(160, 
 
 
 def augment_crease_with_synthetic_realism(project_backend: str, count_per_class: int = 200):
-    """
-    Adds synthetic crease frames into raw_images so the trained model excels on
-    BOTH real-world broadcast images AND synthetic/simulated crease frames.
-    """
     from generate_data import create_synthetic_crease_image
 
     raw_dir = os.path.join(project_backend, "data", "raw_images")
@@ -365,11 +345,15 @@ def augment_crease_with_synthetic_realism(project_backend: str, count_per_class:
 
 def prepare_curated_samples(project_backend: str):
     """
-    Creates a curated samples directory (backend/data/samples) containing real
-    broadcast test images and waist frames for 1-click testing in the SaaS UI.
+    Copies verified sample images into data/samples/ as well as top-level samples/
+    folders so they are easy to pick during a live presentation demo.
     """
     samples_dir = os.path.join(project_backend, "data", "samples")
+    backend_samples = os.path.join(project_backend, "samples")
+    workspace_samples = os.path.join(os.path.dirname(project_backend), "samples")
     os.makedirs(samples_dir, exist_ok=True)
+    os.makedirs(backend_samples, exist_ok=True)
+    os.makedirs(workspace_samples, exist_ok=True)
 
     raw_legal = os.path.join(project_backend, "data", "raw_images", "legal")
     raw_noball = os.path.join(project_backend, "data", "raw_images", "no_ball")
@@ -429,6 +413,21 @@ def prepare_curated_samples(project_backend: str):
             os.path.join(waist_beamer, waist_beamer_files[0]),
             os.path.join(samples_dir, "waist_beamer_1.jpg"),
         )
+
+    # Also populate clearly named demo files in samples/ for manual upload during presentations
+    demo_mappings = [
+        ("real_noball_1.jpg", "1_front_foot_noball_overstep.jpg"),
+        ("real_noball_2.jpg", "2_front_foot_noball_close_margin.jpg"),
+        ("real_legal_1.jpg", "3_legal_delivery_behind_crease.jpg"),
+        ("real_legal_2.jpg", "4_legal_delivery_fair_landing.jpg"),
+        ("waist_beamer_1.jpg", "5_waist_high_beamer_noball.jpg"),
+        ("waist_legal_1.jpg", "6_waist_legal_height_delivery.jpg"),
+    ]
+    for src_name, demo_name in demo_mappings:
+        src_p = os.path.join(samples_dir, src_name)
+        if os.path.exists(src_p):
+            shutil.copyfile(src_p, os.path.join(backend_samples, demo_name))
+            shutil.copyfile(src_p, os.path.join(workspace_samples, demo_name))
 
 
 def setup_all_datasets(project_backend: str = None):

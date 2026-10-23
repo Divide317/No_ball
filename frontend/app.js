@@ -4,7 +4,7 @@ const API_BASE = window.location.origin.includes("http")
 
 let state = {
   activeFormat: "T20",
-  cameraViewMode: "raw", // 'raw' | 'gradcam'
+  cameraViewMode: "raw",
   footBlob: null,
   footFilename: "",
   footRawUrl: null,
@@ -27,15 +27,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadModelMetrics();
   await refreshHistoryLedger();
 
-  // Auto-load the first real broadcast preset so the studio is live immediately
+  // Load the first preset automatically so the interface starts with a live example
   if (state.presets.length > 0) {
     await applySamplePreset(state.presets[0].id);
   }
 });
 
-/* =========================================================================
-   NAVIGATION TABS
-   ========================================================================= */
 function switchTab(tabId) {
   document.querySelectorAll(".nav-tab").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.tab === tabId);
@@ -50,9 +47,6 @@ function switchTab(tabId) {
   }
 }
 
-/* =========================================================================
-   BACKEND HEALTH & SAMPLE PRESETS
-   ========================================================================= */
 async function checkBackendStatus() {
   const dot = document.getElementById("apiStatusDot");
   const text = document.getElementById("apiStatusText");
@@ -60,10 +54,10 @@ async function checkBackendStatus() {
     const res = await fetch(`${API_BASE}/api/status`);
     const data = await res.json();
     dot.className = "status-indicator online";
-    text.textContent = `ONLINE • Dual SE-CNN (${data.device.toUpperCase()})`;
+    text.textContent = `SYSTEM ONLINE | ${data.device.toUpperCase()}`;
   } catch (e) {
     dot.className = "status-indicator";
-    text.textContent = "Backend Offline";
+    text.textContent = "BACKEND OFFLINE";
   }
 }
 
@@ -101,7 +95,6 @@ async function applySamplePreset(sampleId) {
     el.classList.toggle("active", el.id === `preset-${sampleId}`);
   });
 
-  // Populate match context controls
   const ctx = preset.context;
   selectFormat(ctx.match_format, false);
   document.getElementById("inputOver").value = ctx.over;
@@ -117,21 +110,20 @@ async function applySamplePreset(sampleId) {
 
   updateFieldingRadar();
 
-  // Fetch foot & waist blobs from backend sample endpoint
   try {
     const footUrl = `${API_BASE}/api/samples/${sampleId}/image/foot`;
     const footRes = await fetch(footUrl);
     state.footBlob = await footRes.blob();
     state.footFilename = preset.foot_file;
     state.footRawUrl = URL.createObjectURL(state.footBlob);
-    document.getElementById("footFileName").textContent = `${preset.foot_file} (Real Preset)`;
+    document.getElementById("footFileName").textContent = `${preset.foot_file}`;
 
     const waistUrl = `${API_BASE}/api/samples/${sampleId}/image/waist`;
     const waistRes = await fetch(waistUrl);
     state.waistBlob = await waistRes.blob();
     state.waistFilename = preset.waist_file;
     state.waistRawUrl = URL.createObjectURL(state.waistBlob);
-    document.getElementById("waistFileName").textContent = `${preset.waist_file} (Preset)`;
+    document.getElementById("waistFileName").textContent = `${preset.waist_file}`;
 
     refreshCameraImages();
     await runDeliveryEvaluation();
@@ -140,9 +132,6 @@ async function applySamplePreset(sampleId) {
   }
 }
 
-/* =========================================================================
-   CAMERA FEEDS & DRAG-AND-DROP
-   ========================================================================= */
 function setupDragAndDrop() {
   [
     { zoneId: "creaseDropZone", type: "foot" },
@@ -174,6 +163,9 @@ function handleFileSelect(event, type) {
 }
 
 function loadUserFile(file, type) {
+  // Deselect preset cards when user uploads their own custom file
+  document.querySelectorAll(".preset-card").forEach((el) => el.classList.remove("active"));
+
   if (type === "foot") {
     state.footBlob = file;
     state.footFilename = file.name;
@@ -241,9 +233,6 @@ function refreshCameraImages() {
   }
 }
 
-/* =========================================================================
-   2D CRICKET STADIUM FIELDING RADAR & RULE ENGINE PREVIEW
-   ========================================================================= */
 function selectFormat(fmt, triggerEval = true) {
   state.activeFormat = fmt;
   document.querySelectorAll(".fmt-btn").forEach((btn) => {
@@ -259,19 +248,19 @@ function getFormatLimits(fmt, over, ballIdx) {
   const f = fmt.toUpperCase();
   if (f === "T20" || f === "IPL") {
     return {
-      phase: over < 6 ? `${f} Powerplay (Overs 1–6)` : `${f} Non-Powerplay (Overs 7–20)`,
+      phase: over < 6 ? `${f} Powerplay (Overs 1-6)` : `${f} Non-Powerplay (Overs 7-20)`,
       maxOutside: over < 6 ? 2 : 5,
       maxBouncers: f === "IPL" ? 2 : 1,
     };
   }
   if (f === "ODI") {
-    if (over < 10) return { phase: "ODI Powerplay 1 (Overs 1–10)", maxOutside: 2, maxBouncers: 2 };
-    if (over < 40) return { phase: "ODI Powerplay 2 (Overs 11–40)", maxOutside: 4, maxBouncers: 2 };
-    return { phase: "ODI Powerplay 3 (Overs 41–50)", maxOutside: 5, maxBouncers: 2 };
+    if (over < 10) return { phase: "ODI Powerplay 1 (Overs 1-10)", maxOutside: 2, maxBouncers: 2 };
+    if (over < 40) return { phase: "ODI Powerplay 2 (Overs 11-40)", maxOutside: 4, maxBouncers: 2 };
+    return { phase: "ODI Powerplay 3 (Overs 41-50)", maxOutside: 5, maxBouncers: 2 };
   }
   if (f === "100-BALL") {
     return {
-      phase: ballIdx <= 25 ? "100-Ball Powerplay (1–25)" : "100-Ball Non-Powerplay",
+      phase: ballIdx <= 25 ? "100-Ball Powerplay (1-25)" : "100-Ball Standard Play",
       maxOutside: ballIdx <= 25 ? 2 : 5,
       maxBouncers: 1,
     };
@@ -307,7 +296,6 @@ function updateFieldingRadar() {
   badge.textContent = anyFieldViolation ? "FIELDING VIOLATION" : "FIELDING LEGAL";
   badge.className = `radar-status ${anyFieldViolation ? "fail" : "pass"}`;
 
-  // Highlight radar zones
   document.getElementById("thirtyYardCircle").setAttribute(
     "stroke",
     circleViolated ? "#F43F5E" : "#38BDF8"
@@ -321,15 +309,12 @@ function updateFieldingRadar() {
     behindViolated ? "rgba(244,63,94,0.32)" : "rgba(245,158,11,0.08)"
   );
 
-  // Render 9 fielders + bowler + wicketkeeper on the SVG radar
   const layer = document.getElementById("radarFieldersLayer");
   const dots = [];
 
-  // Wicketkeeper & Bowler (fixed reference dots)
   dots.push({ x: 160, y: 102, color: "#38BDF8", label: "WK" });
   dots.push({ x: 160, y: 215, color: "#38BDF8", label: "BWL" });
 
-  // Behind-square leg-side fielders (top-right quadrant above y=126)
   const bsCoords = [
     [202, 92],
     [238, 72],
@@ -346,7 +331,6 @@ function updateFieldingRadar() {
     });
   }
 
-  // Remaining leg-side fielders (right side x > 165, y >= 130)
   const remLeg = Math.max(0, legSide - behindSq);
   const legInCoords = [
     [205, 152],
@@ -374,7 +358,6 @@ function updateFieldingRadar() {
     });
   }
 
-  // Off-side fielders (left side x < 155)
   const totalPlaced = behindSq + remLeg;
   const offCount = Math.max(0, 9 - totalPlaced);
   const offInCoords = [
@@ -425,18 +408,15 @@ function advanceNextBall() {
   }
 }
 
-/* =========================================================================
-   DELIVERY ADJUDICATION (POST /check-delivery)
-   ========================================================================= */
 async function runDeliveryEvaluation() {
   if (!state.footBlob) {
-    alert("Please select a real broadcast preset or upload a crease camera frame first.");
+    alert("Please select a preset or upload a crease camera frame first.");
     return;
   }
 
   const btn = document.getElementById("btnEvaluateDelivery");
   btn.disabled = true;
-  btn.innerHTML = `<span>⏳ Analyzing Frame...</span>`;
+  btn.innerHTML = `<span>Analyzing Frame...</span>`;
 
   const formData = new FormData();
   formData.append("foot_image", state.footBlob, state.footFilename || "foot.jpg");
@@ -479,19 +459,17 @@ async function runDeliveryEvaluation() {
     console.error("Evaluation error:", err);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = `<span>⚡ Adjudicate Delivery</span>`;
+    btn.innerHTML = `<span>Evaluate Delivery</span>`;
   }
 }
 
 function renderDeliveryVerdict(res) {
-  // Store Grad-CAM images
   if (res.telemetry) {
     state.footGradcamUrl = res.telemetry.foot_gradcam || null;
     state.waistGradcamUrl = res.telemetry.waist_gradcam || null;
     refreshCameraImages();
   }
 
-  // Update AI probability bars
   const overstepPct = ((res.ai_overstep_probability || 0) * 100).toFixed(1);
   const footBar = document.getElementById("overstepProbBar");
   document.getElementById("overstepProbText").textContent = `${overstepPct}%`;
@@ -506,7 +484,6 @@ function renderDeliveryVerdict(res) {
     waistBar.style.backgroundColor = beamerPct > 50 ? "#f43f5e" : "#10b981";
   }
 
-  // Update Verdict Banner
   const banner = document.getElementById("verdictBanner");
   const title = document.getElementById("verdictTitle");
   const sub = document.getElementById("verdictSub");
@@ -515,14 +492,13 @@ function renderDeliveryVerdict(res) {
   banner.className = `verdict-banner ${res.is_no_ball ? "noball" : "legal"}`;
   title.textContent = res.is_no_ball ? "NO-BALL SIGNALLED" : "LEGAL DELIVERY";
   sub.textContent = res.is_no_ball
-    ? `${res.reasons.length} law infringement(s) triggered automated third-umpire alert.`
+    ? `${res.reasons.length} law infringement(s) detected by vision and rule engine.`
     : "All optical computer vision checks and ICC/MCC playing conditions satisfied.";
 
   freeHit.classList.toggle("hidden", !res.free_hit_awarded);
   document.getElementById("metaDeliveryId").textContent = `#${res.delivery_id || "LIVE"}`;
   document.getElementById("metaLatency").textContent = `${res.inference_time_ms || 12} ms`;
 
-  // Reasons list
   const reasonsBox = document.getElementById("reasonsContainer");
   const reasonsList = document.getElementById("reasonsList");
   if (res.reasons && res.reasons.length > 0) {
@@ -532,7 +508,6 @@ function renderDeliveryVerdict(res) {
     reasonsBox.classList.add("hidden");
   }
 
-  // 6-Point Law Compliance Matrix
   if (res.rule_details && res.rule_details.checks) {
     document.getElementById("activePhaseBadge").textContent = res.rule_details.powerplay_phase;
     const grid = document.getElementById("complianceGrid");
@@ -578,9 +553,6 @@ function renderDefaultComplianceMatrix() {
     .join("");
 }
 
-/* =========================================================================
-   MATCH TELEMETRY LEDGER & EXPORT
-   ========================================================================= */
 async function refreshHistoryLedger() {
   try {
     const res = await fetch(`${API_BASE}/api/history`);
@@ -598,7 +570,7 @@ async function refreshHistoryLedger() {
 
     const tbody = document.getElementById("historyTableBody");
     if (state.historyCache.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" class="empty-table-cell">No deliveries adjudicated yet.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty-table-cell">No deliveries evaluated in this session yet.</td></tr>`;
       return;
     }
 
@@ -608,15 +580,15 @@ async function refreshHistoryLedger() {
       <tr>
         <td class="mono-val">#${d.delivery_id}</td>
         <td class="mono-val">${d.timestamp}</td>
-        <td><strong>${d.match_format}</strong> • Ov ${d.over_ball}</td>
-        <td>${d.bowler_name} → ${d.batter_name}</td>
+        <td><strong>${d.match_format}</strong> | Ov ${d.over_ball}</td>
+        <td>${d.bowler_name} vs ${d.batter_name}</td>
         <td class="mono-val">${(d.ai_overstep_probability * 100).toFixed(1)}%</td>
         <td class="mono-val">${
-          d.ai_beamer_probability !== null ? (d.ai_beamer_probability * 100).toFixed(1) + "%" : "—"
+          d.ai_beamer_probability !== null ? (d.ai_beamer_probability * 100).toFixed(1) + "%" : "--"
         }</td>
         <td>
           <span class="law-status ${d.is_no_ball ? "fail" : "pass"}">
-            ${d.verdict}${d.free_hit_awarded ? " • FREE HIT" : ""}
+            ${d.verdict}${d.free_hit_awarded ? " (FREE HIT)" : ""}
           </span>
         </td>
         <td>${d.reasons && d.reasons.length ? d.reasons.join(" | ") : "All ICC checks passed"}</td>
@@ -670,9 +642,6 @@ function exportMatchHistoryCsv() {
   a.click();
 }
 
-/* =========================================================================
-   AI MODEL LAB & REAL DATASET BENCHMARKS (/api/metrics)
-   ========================================================================= */
 async function loadModelMetrics() {
   const grid = document.getElementById("modelsBenchmarkGrid");
   try {
@@ -682,13 +651,13 @@ async function loadModelMetrics() {
     const keys = [
       {
         key: "crease_classifier",
-        title: "Crease Classifier (Front-Foot Overstep AI)",
-        subtitle: "MCC Law 21.5 • Real Online Broadcast + Domain-Adapted Crease Dataset",
+        title: "Crease Classifier (Front-Foot Overstep Model)",
+        subtitle: "MCC Law 21.5 | Real Broadcast + Domain-Adapted Crease Dataset",
       },
       {
         key: "waist_classifier",
-        title: "Waist Classifier (Full-Toss Beamer AI)",
-        subtitle: "MCC Law 41.7 • Hybrid Real-Background & Ball Trajectory Dataset",
+        title: "Waist Classifier (Full-Toss Beamer Model)",
+        subtitle: "MCC Law 41.7 | Hybrid Real-Background & Ball Trajectory Dataset",
       },
     ];
 
@@ -696,7 +665,7 @@ async function loadModelMetrics() {
       .map(({ key, title, subtitle }) => {
         const m = models[key];
         if (!m) {
-          return `<div class="glass-card"><h3>${title}</h3><p class="muted-hint">Training in progress...</p></div>`;
+          return `<div class="glass-card"><h3>${title}</h3><p class="muted-hint">Training metrics unavailable.</p></div>`;
         }
         const cm = m.confusion_matrix || { tp: 0, tn: 0, fp: 0, fn: 0 };
         return `
