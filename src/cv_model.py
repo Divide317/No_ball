@@ -376,6 +376,13 @@ def train_generic_model(data_dir, model_filename, epochs=14, batch_size=32, lr=0
         precision = tp / max(tp + fp, 1)
         recall = tp / max(tp + fn, 1)
         f1 = 2 * precision * recall / max(precision + recall, 1e-8)
+        specificity = tn / max(tn + fp, 1)
+        npv = tn / max(tn + fn, 1)
+        fpr = fp / max(fp + tn, 1)
+        fnr = fn / max(fn + tp, 1)
+        balanced_acc = 0.5 * (recall + specificity)
+        mcc_denom = float((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)) ** 0.5
+        mcc = ((tp * tn) - (fp * fn)) / max(mcc_denom, 1e-8)
 
         history.append({
             "epoch": epoch + 1,
@@ -406,11 +413,21 @@ def train_generic_model(data_dir, model_filename, epochs=14, batch_size=32, lr=0
                 "total_samples": len(base_dataset),
                 "train_samples": len(train_dataset),
                 "val_samples": len(val_dataset),
+                "best_epoch": epoch + 1,
                 "best_val_accuracy": round(best_val_acc * 100, 2),
+                "best_train_accuracy": round(epoch_train_acc * 100, 2),
                 "best_val_loss": round(best_val_loss, 4),
+                "best_train_loss": round(epoch_train_loss, 4),
                 "precision": round(precision * 100, 2),
                 "recall": round(recall * 100, 2),
                 "f1_score": round(f1 * 100, 2),
+                "specificity": round(specificity * 100, 2),
+                "npv": round(npv * 100, 2),
+                "fpr": round(fpr * 100, 2),
+                "fnr": round(fnr * 100, 2),
+                "balanced_accuracy": round(balanced_acc * 100, 2),
+                "mcc": round(mcc, 4),
+                "decision_threshold": 0.5,
                 "confusion_matrix": {"tp": tp, "tn": tn, "fp": fp, "fn": fn},
                 "training_time_sec": round(time.time() - start_time, 1),
                 "history": history,

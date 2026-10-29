@@ -54,7 +54,9 @@ img_transform = transforms.Compose([
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_BACKEND = os.path.dirname(SCRIPT_DIR)
 WORKSPACE_ROOT = os.path.dirname(PROJECT_BACKEND)
-FRONTEND_DIR = os.path.join(PROJECT_BACKEND, "frontend")
+FRONTEND_DIR = os.path.join(WORKSPACE_ROOT, "frontend")
+if not os.path.exists(FRONTEND_DIR):
+    FRONTEND_DIR = os.path.join(PROJECT_BACKEND, "frontend")
 MODELS_DIR = os.path.join(PROJECT_BACKEND, "models")
 SAMPLES_DIR = os.path.join(PROJECT_BACKEND, "data", "samples")
 
@@ -142,6 +144,8 @@ def scan_watched_subfolders(folder_path: str):
         "folder_path": folder_path,
         "crease_subfolder": crease_dir,
         "waist_subfolder": waist_dir,
+        "crease_count": len(crease_files),
+        "waist_count": len(waist_files),
         "crease_files": crease_files,
         "waist_files": waist_files,
         "latest_crease": latest_crease,
@@ -370,6 +374,22 @@ def serve_web_app():
     if os.path.exists(frontend_index):
         return FileResponse(frontend_index)
     raise HTTPException(status_code=404, detail="Frontend index.html not found.")
+
+
+@app.get("/styles.css")
+def serve_styles():
+    css_path = os.path.join(FRONTEND_DIR, "styles.css")
+    if os.path.exists(css_path):
+        return FileResponse(css_path, media_type="text/css")
+    raise HTTPException(status_code=404, detail="styles.css not found.")
+
+
+@app.get("/app.js")
+def serve_app_js():
+    js_path = os.path.join(FRONTEND_DIR, "app.js")
+    if os.path.exists(js_path):
+        return FileResponse(js_path, media_type="application/javascript")
+    raise HTTPException(status_code=404, detail="app.js not found.")
 
 
 @app.get("/api/status")

@@ -71,10 +71,10 @@ async function checkBackendStatus() {
     const res = await fetch(`${API_BASE}/api/status`);
     const data = await res.json();
     dot.className = "status-indicator online";
-    text.textContent = `SYSTEM ONLINE | ${data.device.toUpperCase()}`;
+    text.textContent = `Server Online (${data.device.toUpperCase()})`;
   } catch (e) {
     dot.className = "status-indicator";
-    text.textContent = "BACKEND OFFLINE";
+    text.textContent = "Server Offline";
   }
 }
 
@@ -96,7 +96,7 @@ function toggleAutoWatch() {
   const btn = document.getElementById("btnToggleAutoWatch");
   const text = document.getElementById("autoWatchText");
   btn.classList.toggle("active", state.autoWatchEnabled);
-  text.textContent = state.autoWatchEnabled ? "AUTO-WATCH ACTIVE" : "AUTO-WATCH PAUSED";
+  text.textContent = state.autoWatchEnabled ? "Auto-Watch Active" : "Auto-Watch Paused";
 }
 
 async function applyWatchFolderPath() {
