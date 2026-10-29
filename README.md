@@ -17,6 +17,30 @@ Evaluating a cricket delivery requires checking both visual evidence from side-o
 4. **Deterministic Rule Engine:**
    Evaluates non-visual no-ball criteria including over bouncer quotas (Law 41.6), 30-yard circle restrictions across powerplay phases (Clause 28.7), leg-side fielder limits (Law 28.4), behind-square-leg limits (Law 28.4), and format-specific Free Hit rules.
 
+## Comparison with Existing Approaches
+
+Most prior automated no-ball systems and academic prototypes focus exclusively on binary image classification of the bowler's front foot at the popping crease. In real matches, however, an umpire must adjudicate several distinct laws simultaneously, verify why a model flagged a marginal frame, and ingest frames continuously from camera feeds without manual file uploads.
+
+CreaseGuard addresses the main limitations of earlier approaches across five areas:
+
+1. **Dual-Camera Coverage Instead of Single-Crease Classification:**
+   Earlier computer vision implementations only evaluate front-foot overstepping (Law 21.5) and ignore height-based infringements. CreaseGuard runs two separate neural networks in parallel: one for the popping crease landing (`crease_classifier`) and a second for waist-high full tosses at the batter's plane (`waist_classifier`, Law 41.7).
+2. **Channel-Attention Residual Architecture vs. Shallow CNNs / Uncalibrated Transfer Learning:**
+   Standard shallow CNNs and generic pre-trained backbones often struggle with motion blur, turf discoloration, and stadium shadow gradients around the white crease line. CreaseGuard introduces Squeeze-and-Excitation (SE) channel attention inside each residual stage to weight feature channels corresponding to the crease edge, shoe heel, and ball trajectory while suppressing background grass noise, alongside dual average-and-max global pooling.
+3. **Hybrid Vision and Deterministic Rule Adjudication:**
+   Prior vision-only tools cannot detect tactical no-balls such as fielding circle violations, leg-side fielder limits, or exceeded bouncer quotas, nor do they account for format differences (for example, the two-bouncer-per-over allowance in IPL versus one in T20I, or three powerplay blocks in ODI). CreaseGuard couples neural inference with a stateful rule engine so that all six ICC and MCC criteria are checked in a single pass.
+4. **Verifiable Spatial Attribution (Grad-CAM) vs. Black-Box Probabilities:**
+   A raw softmax probability is insufficient when a foot landing is within a few millimeters of the popping crease. CreaseGuard extracts Stage-4 spatial gradients on every inference call to overlay a heatmap and peak activation coordinate directly onto the camera frame, showing whether the network focused on the shoe heel and crease line or on a background artifact.
+5. **Automated Subfolder Ingestion vs. Manual Single-File Scripts:**
+   Instead of requiring an operator to run a command-line script or manually upload individual files after each ball, CreaseGuard monitors a parent folder with dedicated `crease/` and `waist/` subdirectories, automatically detecting and evaluating new frames as they are written to disk.
+
+| Approach | Scope of Laws Checked | Model Explainability | Match Context Awareness | Frame Ingestion Workflow |
+| :--- | :--- | :--- | :--- | :--- |
+| Manual on-field umpiring | All laws, but subject to human split-second error at the crease | None | High, tracked manually by umpires and scorers | Visual observation only |
+| Proprietary stadium Hawk-Eye / TV replay | Front-foot replay and ball tracking | Trajectory graphics, no neural attribution | Requires manual third-umpire review per ball | Multi-camera broadcast truck hardware |
+| Prior single-camera CNN prototypes | Front-foot overstep only (Law 21.5) | Black-box class label or probability | None (ignores format, bouncers, and fielding) | Manual single-image upload or CLI script |
+| **CreaseGuard (Proposed)** | **Dual-CV (Laws 21.5 & 41.7) + 4 contextual ICC/MCC rules** | **Stage-4 Grad-CAM heatmap and peak reticle** | **Format-aware engine (T20I, IPL, ODI, Test, 100-Ball)** | **Automated directory watcher (`crease/` & `waist/` subfolders)** |
+
 ## Validation Benchmarks
 
 Both vision models use a 4-stage Residual SE-CNN backbone (`src/model.py`) with channel dimensions `[32, 64, 128, 256]`, Squeeze-and-Excitation channel attention (`reduction=8`), concatenated global average and max pooling (`512-d`), and a two-class linear classification head. Models were trained using AdamW, a OneCycleLR learning rate schedule, and class-balanced label smoothing (`0.04`) on an 80/20 train-validation split.
