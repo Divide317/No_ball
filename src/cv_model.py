@@ -122,6 +122,22 @@ class CricketClassifier(nn.Module):
         return self.classifier(pooled)
 
 
+def compute_gradcam(model, input_tensor, target_idx):
+    """
+    Grad-CAM (Selvaraju et al., 2017): each stage-4 feature map is weighted by the
+    spatially averaged gradient of the target-class logit, then summed and rectified.
+    """
+    model.eval()
+    with torch.enable_grad():
+        feat = model.forward_features(input_tensor).detach().requires_grad_(True)
+        avg_p = torch.mean(feat, dim=(2, 3), keepdim=True)
+        max_p = torch.amax(feat, dim=(2, 3), keepdim=True)
+        logits = model.classifier(torch.cat([avg_p, max_p], dim=1))
+        grads = torch.autograd.grad(logits[0, target_idx], feat)[0]
+    weights = grads.mean(dim=(2, 3), keepdim=True)
+    return F.relu((weights * feat).sum(dim=1)).squeeze(0).detach().cpu().numpy()
+
+
 def generate_gradcam_telemetry(
     model: CricketClassifier,
     pil_img: Image.Image,
@@ -129,20 +145,17 @@ def generate_gradcam_telemetry(
     device,
     cam_type: str = "crease",
     prob_illegal: float = 0.0,
+    target_idx: int = 1,
 ) -> str:
     """
-    Builds a Grad-CAM style activation heatmap from the final conv stage (stage4)
-    so we can see which part of the image the CNN focused on when making its call.
+    Builds a Grad-CAM heatmap for the illegal class (no-ball / beamer) from the final
+    convolutional stage and overlays it on the camera frame with a status HUD.
     Returns a base64 JPEG data URL for the frontend.
     """
     model.eval()
     orig_rgb = np.array(pil_img.convert("RGB").resize((320, 320)))
     input_tensor = transform(pil_img).unsqueeze(0).to(device)
-
-    # Grab the 8x8 spatial feature maps from stage4 and average positive activations
-    with torch.no_grad():
-        feat = model.forward_features(input_tensor)
-        heatmap = torch.mean(F.relu(feat), dim=1).squeeze(0).cpu().numpy()
+    heatmap = compute_gradcam(model, input_tensor, target_idx)
 
     heatmap = np.maximum(heatmap, 0)
     if heatmap.max() > 1e-6:
@@ -292,6 +305,10 @@ def train_generic_model(data_dir, model_filename, epochs=14, batch_size=32, lr=0
     train_dataset = Subset(train_full, train_indices)
     val_dataset = Subset(val_full, val_indices)
 
+    # Metrics treat the illegal class (no_ball / beamer) as the positive class
+    illegal_name = "beamer" if "beamer" in base_dataset.classes else "no_ball"
+    pos_idx = base_dataset.classes.index(illegal_name)
+
     train_targets = targets[train_indices]
     class_counts = np.bincount(train_targets, minlength=2)
     total_train_samples = len(train_indices)
@@ -366,10 +383,12 @@ def train_generic_model(data_dir, model_filename, epochs=14, batch_size=32, lr=0
                 total_val += labels.size(0)
                 correct_val += (predicted == labels).sum().item()
 
-                tp += ((predicted == 1) & (labels == 1)).sum().item()
-                tn += ((predicted == 0) & (labels == 0)).sum().item()
-                fp += ((predicted == 1) & (labels == 0)).sum().item()
-                fn += ((predicted == 0) & (labels == 1)).sum().item()
+                pred_pos = predicted == pos_idx
+                true_pos = labels == pos_idx
+                tp += (pred_pos & true_pos).sum().item()
+                tn += (~pred_pos & ~true_pos).sum().item()
+                fp += (pred_pos & ~true_pos).sum().item()
+                fn += (~pred_pos & true_pos).sum().item()
 
         epoch_val_loss = val_loss / len(val_dataset)
         epoch_val_acc = correct_val / total_val
@@ -410,6 +429,8 @@ def train_generic_model(data_dir, model_filename, epochs=14, batch_size=32, lr=0
                 "model_name": model_filename,
                 "architecture": "Residual SE-CNN (4-Stage Squeeze-and-Excitation + Dual Adaptive Pooling)",
                 "classes": base_dataset.classes,
+                "positive_class": illegal_name,
+                "parameters_count": f"{sum(p.numel() for p in model.parameters()):,}",
                 "total_samples": len(base_dataset),
                 "train_samples": len(train_dataset),
                 "val_samples": len(val_dataset),

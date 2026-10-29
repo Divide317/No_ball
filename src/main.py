@@ -207,6 +207,7 @@ def run_delivery_pipeline(
                 device,
                 cam_type="crease",
                 prob_illegal=overstep_prob,
+                target_idx=1,
             )
     except Exception as e:
         reasons.append(f"Crease image evaluation failed: {e}")
@@ -234,6 +235,7 @@ def run_delivery_pipeline(
                     device,
                     cam_type="waist",
                     prob_illegal=beamer_prob,
+                    target_idx=0,
                 )
         except Exception as e:
             reasons.append(f"Waist image evaluation failed: {e}")

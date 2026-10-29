@@ -43,7 +43,7 @@ CreaseGuard addresses the main limitations of earlier approaches across five are
 
 ## Validation Benchmarks
 
-Both vision models use a 4-stage Residual SE-CNN backbone (`src/model.py`) with channel dimensions `[32, 64, 128, 256]`, Squeeze-and-Excitation channel attention (`reduction=8`), concatenated global average and max pooling (`512-d`), and a two-class linear classification head. Models were trained using AdamW, a OneCycleLR learning rate schedule, and class-balanced label smoothing (`0.04`) on an 80/20 train-validation split.
+Both vision models use a 4-stage Residual SE-CNN backbone (`src/cv_model.py`) with channel dimensions `[32, 64, 128, 256]`, Squeeze-and-Excitation channel attention (`reduction=8`), concatenated global average and max pooling (`512-d`), and a two-class linear classification head. Models were trained using AdamW, a OneCycleLR learning rate schedule, and class-balanced label smoothing (`0.04`) on an 80/20 train-validation split.
 
 | Model | Target Law | Dataset Size | Train / Val Split | Validation Accuracy | F1-Score | Precision | Recall |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -73,11 +73,11 @@ backend/
 |   |-- crease/             # Secondary watched directory for testing live file drops
 |   `-- waist/
 |-- src/
-|   |-- main.py             # FastAPI application, Grad-CAM hook, and folder-watcher endpoints
-|   |-- model.py            # Residual SE-CNN architecture (SEBlock, ResidualSEBlock, CricketClassifier)
-|   |-- train.py            # Training pipeline, data augmentation, and ONNX export
-|   |-- rules.py            # ICC and MCC rule adjudication engine (NoBallRuleEngine)
+|   |-- main.py             # FastAPI application, Grad-CAM telemetry, and folder-watcher endpoints
+|   |-- cv_model.py         # Residual SE-CNN architecture, Grad-CAM computation, and training pipeline
+|   |-- rule_engine.py      # ICC and MCC rule adjudication engine (NoBallRuleEngine)
 |   |-- prepare_dataset.py  # Dataset indexing, waist trajectory synthesis, and sample setup
+|   |-- preprocessing.py    # Image contrast enhancement and perspective normalisation
 |   `-- generate_data.py    # Synthetic crease frame generator for domain augmentation
 `-- requirements.txt
 ```
@@ -100,7 +100,7 @@ Pre-trained PyTorch and ONNX checkpoints are already included in `models/`. To r
 
 ```bash
 python src/prepare_dataset.py
-python src/train.py
+python src/cv_model.py
 ```
 
 ### 3. Running the Server
