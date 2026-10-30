@@ -1,5 +1,5 @@
 """
-preprocessing.py - Standalone image preprocessing pipeline for CreaseGuard Pro.
+preprocessing.py - Standalone image preprocessing pipeline for CreaseGuard.
 
 This module is NOT imported by main.py or cv_model.py, so the live server and the
 trained models behave exactly as before. It exists to make every preprocessing

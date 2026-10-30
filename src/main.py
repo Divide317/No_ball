@@ -22,7 +22,7 @@ from rule_engine import CricketRuleEngine
 
 # Initialize FastAPI server
 app = FastAPI(
-    title="CreaseGuard Pro - Cricket No-Ball Detection API",
+    title="CreaseGuard - Cricket No-Ball Detection API",
     description="Combines dual PyTorch CNNs for crease and waist checks with an ICC/MCC rule engine and automated folder watching.",
     version="3.0.0",
 )
@@ -362,7 +362,7 @@ def read_root(request: Request):
         return FileResponse(frontend_index)
     return {
         "status": "online",
-        "service": "CreaseGuard Pro - Dual-CV Cricket No-Ball Detection API",
+        "service": "CreaseGuard - Dual-CV Cricket No-Ball Detection API",
         "version": "3.0.0",
         "message": "Dual-CV Cricket No-Ball Detection API is active.",
         "crease_model_loaded": crease_model is not None,
